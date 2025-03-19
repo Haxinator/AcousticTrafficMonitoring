@@ -31,7 +31,8 @@ twitter_username: jekyllrb
 github_username:  Haxinator
 
 # Build settings
-theme: minima
+#theme: minima
+theme: jekyll-theme-minimal
 plugins:
   - jekyll-feed
 
