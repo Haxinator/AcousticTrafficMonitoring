@@ -122,7 +122,9 @@ print(net.parameters)
 optimiser = Adam(net.parameters().astorch(), lr=1e-3)
 
 #Dylan recommends using MSE for loss
+#MSE gives much lower accuracy (33% in 100 epochs)
 #loss_function = MSELoss() #gives error due to different dimension.
+#cross entroy achieves 70% in 100 epochs
 loss_function = CrossEntropyLoss()
 
 #pointless task
@@ -154,24 +156,25 @@ for epoch in trange(n_epochs):
         #target channel should have most number of spikes
 
         #TODO figure this out so I can measure accuracy
-        #sum = torch.cumsum(output, dim=1).float()
-        #print(sum[:,-1,-1].size(), labels.size())
-        #loss = loss_function(sum[:,-1,-1], labels)
+        sum = torch.cumsum(output, dim=1)
+        #sum = sum.to(torch.float32)
+        #print(sum[:,0,0].size(), labels.size())
+        loss = loss_function(sum[:,-1,:], labels)
 
-        pred = torch.sum(output, dim=1)
+        #pred = torch.sum(output, dim=1)
 
-        loss = loss_function(pred, labels)
+        #loss = loss_function(pred, labels)
 
         loss.backward()
         optimiser.step()
 
-        # Calculate the number of correct answers
-        #predicted = torch.argmax(sum[:,-1,-1], 1)
+        #Calculate the number of correct answers
+        predicted = torch.argmax(sum[:,-1,:], 1)
 
         #to get number of datafiles and number of correct guesses
         total += labels.size(0)
         #print(output.select(0,0).size(), labels.size())
-        #correct += (predicted == labels).sum().item()
+        correct += (predicted == labels).sum().item()
 
     accuracy = 100 * correct / total
     print(f'Epoch {epoch}/{n_epochs}, loss {loss.item():.2e}, accuracy {accuracy}')
