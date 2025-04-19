@@ -1,3 +1,10 @@
+#NOTES
+'''
+In 100 epochs:
+ - Using vmem as output increases accuracy by about 8 percent.
+ - Using MSE increases accuracy by about 2 percent.
+'''
+
 #Use SynNet to start. We Will need to develop our own architecture later.
 #Still able to make some small adjustments to the network though.
 from rockpool.nn.networks import SynNet
@@ -6,9 +13,11 @@ import torch
 from torch.optim import Adam
 from torch.nn import MSELoss
 from torch.nn import CrossEntropyLoss
+from torch.utils.data import DataLoader
 #data transformations and caching.
 import tonic
 import tonic.transforms as T
+from tonic import datasets
 
 #gives error
 from tqdm import trange
@@ -17,7 +26,7 @@ from tqdm import trange
 import matplotlib.pyplot as plt
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 100
+n_epochs = 500
 n_batches = 1
 n_time = 100
 n_labels = 3
@@ -102,7 +111,7 @@ train_dl = torch.utils.data.DataLoader(
 # Need to experiment with number of layers, neurons and time constants.
 net = SynNet(
     #Dylan recommended this since it will make the optimiser work better.
-    #output="vmem",                         # Use the membrane potential as the output of the network.
+    output="vmem",                         # Use the membrane potential as the output of the network.
     p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
 
     #time constants and threshold are not trainable by default.
@@ -114,22 +123,16 @@ net = SynNet(
     time_constants_per_layer = [2, 4, 8],   # Number of time constants in each hidden layer (taken from tutorial)
 )
 
-print(net)
+#print(net)
 #show trainable parameters (time constants should be empty dict otherwise they will be trained)
-print(net.parameters)
+#print(net.parameters)
 
 #pass parameters to optimise and the learning rate (lr) respectively to adam.
 optimiser = Adam(net.parameters().astorch(), lr=1e-3)
 
 #Dylan recommends using MSE for loss
-#MSE gives much lower accuracy (33% in 100 epochs)
-#loss_function = MSELoss() #gives error due to different dimension.
-#cross entroy achieves 70% in 100 epochs
-loss_function = CrossEntropyLoss()
-
-#pointless task
-#input_sp = (torch.rand(1, 100, 16) < 0.01) * 1.0
-#target_sp = torch.ones(1, 100, 3)
+#results in slightly higher accuracy compared to other functions
+loss_function = MSELoss()
 
 #very basic barebones training loop.
 #no constraints used
@@ -157,9 +160,7 @@ for epoch in trange(n_epochs):
 
         #TODO figure this out so I can measure accuracy
         sum = torch.cumsum(output, dim=1)
-        #sum = sum.to(torch.float32)
-        #print(sum[:,0,0].size(), labels.size())
-        loss = loss_function(sum[:,-1,:], labels)
+        loss = loss_function(sum[:,-1,-1].to(torch.float32), labels.to(torch.float32))
 
         #pred = torch.sum(output, dim=1)
 
@@ -173,13 +174,13 @@ for epoch in trange(n_epochs):
 
         #to get number of datafiles and number of correct guesses
         total += labels.size(0)
-        #print(output.select(0,0).size(), labels.size())
         correct += (predicted == labels).sum().item()
 
     accuracy = 100 * correct / total
-    print(f'Epoch {epoch}/{n_epochs}, loss {loss.item():.2e}, accuracy {accuracy}')
+    print(f'Epoch {epoch}/{n_epochs}, loss {loss.item():.2}, accuracy {accuracy:.2}')
 
 #with our trainned net make a predicition on a file
+'''
 events, label = train_data[4]
 
 out, _, rd = net(events, record = True)
@@ -192,3 +193,35 @@ plt.xlim([0,1])
 plt.ylim([-1,3])
 plt.plot(0.01, label, '>', ms=18) #show highlight correct label on plot
 plt.show()
+'''
+
+train_dl = torch.utils.data.DataLoader(
+    tonic.DiskCachedDataset(
+        dataset=SubsetClasses(train_data, range(3)),
+        cache_path=f"cache/{train_data.__class__.__name__}/train/{net_channels}/{net_dt}",
+        reset_cache = False,
+    ),
+    **dataloader_kwargs
+)
+
+# TEST LOOP
+test_data = datasets.SHD('./data', train=False, transform=transform)
+test_dl = DataLoader(SubsetClasses(test_data, range(3)), num_workers=8, batch_size=256,
+                          collate_fn=tonic.collation.PadTensors(batch_first=True), drop_last=True, shuffle=False)
+
+with torch.no_grad():
+    correct = 0
+    total = 0
+
+    for events, labels in test_dl:
+        output, _, _ = net(torch.Tensor(events).float())
+
+        sum = torch.cumsum(output, dim=1)
+
+        predicted = torch.argmax(sum[:,-1,:], 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+    accuracy_test = (correct/total)*100
+
+print(f"Test Accuracy: {accuracy_test:.3f}%")
