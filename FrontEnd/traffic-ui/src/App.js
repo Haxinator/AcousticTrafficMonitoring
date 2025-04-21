@@ -1,5 +1,6 @@
 
 import React from 'react';
+import './index.css';
 import TrafficMonitorUI from './TrafficMonitorUI';
 
 function App() {
