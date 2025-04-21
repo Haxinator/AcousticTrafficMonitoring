@@ -26,10 +26,10 @@ from tqdm import trange
 import matplotlib.pyplot as plt
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 500
+n_epochs = 1
 n_batches = 1
 n_time = 100
-n_labels = 3
+n_labels = 20
 
 #ONLY FOR TEST----------------------------------------------
 shd_timestep = 1e-6
@@ -95,7 +95,8 @@ dataloader_kwargs = dict(
 
 train_dl = torch.utils.data.DataLoader(
     tonic.DiskCachedDataset(
-        dataset=SubsetClasses(train_data, range(3)),
+        #dataset=SubsetClasses(train_data, range(3)),
+        dataset=train_data,
         cache_path=f"cache/{train_data.__class__.__name__}/train/{net_channels}/{net_dt}",
         reset_cache = False,
     ),
@@ -107,11 +108,14 @@ train_dl = torch.utils.data.DataLoader(
 
 #in reality need to use dataloader to open file.
 
+# A manual seed ensures repeatability
+torch.manual_seed(1234) 
+
 # - Build a simple SynNet with three hidden layers
 # Need to experiment with number of layers, neurons and time constants.
 net = SynNet(
     #Dylan recommended this since it will make the optimiser work better.
-    output="vmem",                         # Use the membrane potential as the output of the network.
+    #output="vmem",                         # Use the membrane potential as the output of the network.
     p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
 
     #time constants and threshold are not trainable by default.
@@ -132,7 +136,8 @@ optimiser = Adam(net.parameters().astorch(), lr=1e-3)
 
 #Dylan recommends using MSE for loss
 #results in slightly higher accuracy compared to other functions
-loss_function = MSELoss()
+#loss_function = MSELoss()
+loss_function = CrossEntropyLoss()
 
 #very basic barebones training loop.
 #no constraints used
@@ -160,7 +165,7 @@ for epoch in trange(n_epochs):
 
         #TODO figure this out so I can measure accuracy
         sum = torch.cumsum(output, dim=1)
-        loss = loss_function(sum[:,-1,-1].to(torch.float32), labels.to(torch.float32))
+        loss = loss_function(sum[:,-1,:], labels)
 
         #pred = torch.sum(output, dim=1)
 
@@ -177,7 +182,7 @@ for epoch in trange(n_epochs):
         correct += (predicted == labels).sum().item()
 
     accuracy = 100 * correct / total
-    print(f'Epoch {epoch}/{n_epochs}, loss {loss.item():.2}, accuracy {accuracy:.2}')
+    print(f'Epoch {epoch}/{n_epochs}, loss {loss.item():.2f}, accuracy {accuracy:.2f}')
 
 #with our trainned net make a predicition on a file
 '''
@@ -193,7 +198,6 @@ plt.xlim([0,1])
 plt.ylim([-1,3])
 plt.plot(0.01, label, '>', ms=18) #show highlight correct label on plot
 plt.show()
-'''
 
 train_dl = torch.utils.data.DataLoader(
     tonic.DiskCachedDataset(
@@ -203,10 +207,11 @@ train_dl = torch.utils.data.DataLoader(
     ),
     **dataloader_kwargs
 )
+'''
 
 # TEST LOOP
 test_data = datasets.SHD('./data', train=False, transform=transform)
-test_dl = DataLoader(SubsetClasses(test_data, range(3)), num_workers=8, batch_size=256,
+test_dl = DataLoader(test_data, num_workers=8, batch_size=256,
                           collate_fn=tonic.collation.PadTensors(batch_first=True), drop_last=True, shuffle=False)
 
 with torch.no_grad():
