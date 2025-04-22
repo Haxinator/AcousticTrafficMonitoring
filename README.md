@@ -8,6 +8,24 @@
 python3 --version
 ```
 
+### Installing Project Dependencies using requirements.txt file
+First create a venv:
+```
+python3 -m venv <myenvpath>
+```
+
+Source venv:
+```
+source venv/bin/activate
+```
+
+Install requirements:
+```
+pip3 install -r requirements.txt
+```
+
+Then you should be good to go!
+
 ### Recommended installation:
 
 Create venv and install rockpool in project directory:
