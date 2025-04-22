@@ -9,6 +9,8 @@ python3 --version
 ```
 
 ### Installing Project Dependencies using requirements.txt file
+These instructions were tested using WSL on Ubuntu 24.04LTS
+
 First create a venv:
 ```
 python3 -m venv <myenvpath>
