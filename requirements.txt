@@ -140,3 +140,12 @@ watchfiles==1.0.4
 webencodings==0.5.1
 websockets==15.0.1
 xylosim==0.1.3
+
+
+# These are the only libraries actually used according to pipreqs?
+# matplotlib==3.10.1
+# numpy==2.2.5
+# rockpool==2.9.2
+# tonic==1.6.0
+# torch==2.6.0
+# tqdm==4.67.1
