@@ -205,7 +205,7 @@ net = SynNet(
     n_classes = n_labels,                          # Number of output classes (car, commercial, background noise).
     size_hidden_layers = [24, 24, 24],      # Number of neurons in each hidden layer (taken from tutorial)
     time_constants_per_layer = [2, 4, 8],   # Number of time constants in each hidden layer (taken from tutorial)
-)
+).to(dev)
 
 #print(net)
 #show trainable parameters (time constants should be empty dict otherwise they will be trained)
@@ -236,6 +236,7 @@ for epoch in trange(n_epochs):
 
     #batching done by torch/tonic dataloader
     for events, labels in train_dl:
+        events, labels = events.to(device), labels.to(device)
         optimiser.zero_grad()
 
         #output, _, _ = net(events)
@@ -296,6 +297,7 @@ with torch.no_grad():
     total = 0
 
     for events, labels in test_dl:
+        events, labels = events.to(dev), labels.to(dev)
         output, _, _ = net(torch.Tensor(events).float())
 
         sum = torch.cumsum(output, dim=1)
