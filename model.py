@@ -14,30 +14,46 @@ from torch.optim import Adam
 from torch.nn import MSELoss
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
+from torchvision import datasets
+from torchvision.transforms import ToTensor
+
 #data transformations and caching.
 import tonic
 import tonic.transforms as T
-from tonic import datasets
+#from tonic import datasets
+
+#for paths
+import os
+import logging
 
 #gives error
 from tqdm import trange
 
 #visualisation
 import matplotlib.pyplot as plt
+import numpy as np
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 1
+n_epochs = 100
 n_batches = 1
 n_time = 100
-n_labels = 20
+n_labels = 3
+net_channels = 16
+
+# - Use a GPU if available for faster training
+dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+device = torch.device(dev)
 
 #ONLY FOR TEST----------------------------------------------
-shd_timestep = 1e-6
-shd_channels = 700
+'''
 shd_classes = 20
 net_channels = 16
+
+shd_timestep = 1e-6
+shd_channels = 700
 net_dt = 10e-3
 sample_T = 250
+
 #events, label = train_data[1]
 #times = events['t'] * shd_timestep
 #channels = events['x']
@@ -102,9 +118,73 @@ train_dl = torch.utils.data.DataLoader(
     ),
     **dataloader_kwargs
 )
+
+test_data = datasets.SHD('./data', train=False, transform=transform)
+test_dl = DataLoader(test_data, num_workers=8, batch_size=256,
+                          collate_fn=tonic.collation.PadTensors(batch_first=True), drop_last=True, shuffle=False)
+
 ############# END TEST DATA------------------------------------------
+'''
 
+base_dir = os.path.dirname(os.path.abspath('__file__'))
+base_dir = os.path.join(base_dir, "DataPreprocessing/npy")
+train_path = os.path.join(base_dir, "Train")
+val_path = os.path.join(base_dir, "Validation")
 
+if not os.path.exists(train_path):
+        logging.error(f"folder not found at: {train_path}")
+        exit(1)
+if not os.path.exists(val_path):
+        logging.error(f"folder not found at: {val_path}")
+        exit(1)
+
+#for loading npy files
+def npy_loader(path):
+    sample = torch.from_numpy(np.load(path))
+    return sample
+
+training_data = datasets.DatasetFolder(
+    root=train_path,
+    loader=npy_loader,
+    extensions=['.npy'],
+   # transform=ToTensor()
+)
+
+test_data = datasets.DatasetFolder(
+    root=val_path,
+    loader=npy_loader,
+    extensions=['.npy'],
+  #  transform=ToTensor()
+)
+
+dataloader_kwargs = dict(
+    batch_size=128,
+    shuffle=True,
+    drop_last=True,
+    pin_memory=True,
+    collate_fn=tonic.collation.PadTensors(batch_first=True),
+    num_workers=8,
+)
+
+disk_train_dataset = tonic.DiskCachedDataset(
+    dataset=training_data,
+    # transform = torch.Tensor,lambda x: torch.tensor(x).to_sparse(),
+    cache_path=f"cache/{training_data.__class__.__name__}/train/{net_channels}/",
+    # target_transform=lambda x: torch.tensor(x),
+    reset_cache = True,
+  )
+
+#probably don't need to cache test data lol
+disk_test_dataset = tonic.DiskCachedDataset(
+    dataset=test_data,
+    # transform = torch.Tensor,lambda x: torch.tensor(x).to_sparse(),
+    cache_path=f"cache/{test_data.__class__.__name__}/test/{net_channels}/",
+    # target_transform=lambda x: torch.tensor(x),
+    reset_cache = True,
+  )
+
+train_dl = DataLoader(disk_train_dataset, **dataloader_kwargs)
+test_dl = DataLoader(disk_test_dataset, **dataloader_kwargs)
 
 #in reality need to use dataloader to open file.
 
@@ -125,7 +205,7 @@ net = SynNet(
     n_classes = n_labels,                          # Number of output classes (car, commercial, background noise).
     size_hidden_layers = [24, 24, 24],      # Number of neurons in each hidden layer (taken from tutorial)
     time_constants_per_layer = [2, 4, 8],   # Number of time constants in each hidden layer (taken from tutorial)
-)
+).to(dev)
 
 #print(net)
 #show trainable parameters (time constants should be empty dict otherwise they will be trained)
@@ -156,9 +236,11 @@ for epoch in trange(n_epochs):
 
     #batching done by torch/tonic dataloader
     for events, labels in train_dl:
+        events, labels = events.to(device), labels.to(device)
         optimiser.zero_grad()
 
-        output, _, _ = net(events)
+        #output, _, _ = net(events)
+        output, _, _ = net(torch.Tensor(events).float())
 
         #number of spikes on output channels gives prediction
         #target channel should have most number of spikes
@@ -210,15 +292,12 @@ train_dl = torch.utils.data.DataLoader(
 '''
 
 # TEST LOOP
-test_data = datasets.SHD('./data', train=False, transform=transform)
-test_dl = DataLoader(test_data, num_workers=8, batch_size=256,
-                          collate_fn=tonic.collation.PadTensors(batch_first=True), drop_last=True, shuffle=False)
-
 with torch.no_grad():
     correct = 0
     total = 0
 
     for events, labels in test_dl:
+        events, labels = events.to(dev), labels.to(dev)
         output, _, _ = net(torch.Tensor(events).float())
 
         sum = torch.cumsum(output, dim=1)
