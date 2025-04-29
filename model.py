@@ -34,11 +34,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 1
+n_epochs = 100
 n_batches = 1
 n_time = 100
 n_labels = 3
 net_channels = 16
+
+# - Use a GPU if available for faster training
+dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+device = torch.device(dev)
 
 #ONLY FOR TEST----------------------------------------------
 '''
@@ -170,6 +174,7 @@ disk_train_dataset = tonic.DiskCachedDataset(
     reset_cache = True,
   )
 
+#probably don't need to cache test data lol
 disk_test_dataset = tonic.DiskCachedDataset(
     dataset=test_data,
     # transform = torch.Tensor,lambda x: torch.tensor(x).to_sparse(),
