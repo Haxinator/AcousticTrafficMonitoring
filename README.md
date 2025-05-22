@@ -54,19 +54,18 @@ The model will then train on the spike data previously generated. Note that trai
 
 ### Running the Front end
 
-Make sure npm and Node.js are installed.
-
-Installing: 
-https://askubuntu.com/questions/1502744/how-to-install-node-js-latest-version-on-ubuntu-22-04
+Make sure npm and Node.js are [installed](https://askubuntu.com/questions/1502744/how-to-install-node-js-latest-version-on-ubuntu-22-04).
 
 Once installed run ```npm install ``` in the ```FrontEnd/traffic-ui``` directory.
 
 Followed by ```npm audit fix --force```
 
-Once you run ```npm start``` the webpage should open automatically in your browser, otherwise placeip address provided in the terminal output in a web browser.
+Once you run ```npm start``` the webpage should open automatically in your browser, otherwise place the ip address provided in the terminal output in a web browser.
 
 ### Viewing the project website
 The website summarising the project is deployed [here](https://haxinator.github.io/AcousticTrafficMonitoring/)
+
+If you wish to make changes you can directly change the md files inside the `docs` subdirectory. To view the changes locally install [Jeykll](https://jekyllrb.com/docs/installation/). Otherwise after you push to Git the project website will update automatically.
  
 ### Installing Rockpool (Unnecessary if the above instructions were followed):
 
