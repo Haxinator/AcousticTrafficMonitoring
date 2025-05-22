@@ -28,7 +28,47 @@ pip3 install -r requirements.txt
 
 Then you should be good to go!
 
-### Recommended installation:
+### Data Preprocessing
+Download and follow the instructions for extracting the [Acoustic Based Traffic Monitoring Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring)
+
+Place the `loc` directories into the Datapreprocessing folder. Run the `data_preprocessing.ipynb` notebook to start extracting audio segments of cars, commerical vehicles and background noise.
+
+Once complete run the `spike_test.ipynb` file to convert the segements into spikes which the SNN model can use.
+
+This process can take may take a day or two to complete.
+
+### Running the Model
+Ensure that the data preprocessing has been completed and the audio segements have been converted to spikes by refering to the instructions above before running the model. 
+
+To run the model first ensure that you have activated your virtual environment by running
+```
+source venv/bin/activate
+```
+
+Then run
+```
+Python3 model.py
+```
+
+The model will then train on the spike data previously generated. Note that training takes a long time, to reduce training time reduce the number of epochs, however, this will reduce the accuracy of the model.
+
+### Running the Front end
+
+Make sure npm and Node.js are installed.
+
+Installing: 
+https://askubuntu.com/questions/1502744/how-to-install-node-js-latest-version-on-ubuntu-22-04
+
+Once installed run ```npm install ``` in the ```FrontEnd/traffic-ui``` directory.
+
+Followed by ```npm audit fix --force```
+
+Once you run ```npm start``` the webpage should open automatically in your browser, otherwise placeip address provided in the terminal output in a web browser.
+
+### Viewing the project website
+The website summarising the project is deployed [here](https://haxinator.github.io/AcousticTrafficMonitoring/)
+ 
+### Installing Rockpool (Unnecessary if the above instructions were followed):
 
 Create venv and install rockpool in project directory:
 ``` bash
