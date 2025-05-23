@@ -1,4 +1,9 @@
-# AcousticTrafficMonitoring
+![image](https://github.com/user-attachments/assets/50d51f9a-db1a-4307-9237-e399bb098881)# AcousticTrafficMonitoring
+
+## About
+This project will demonstrate the effectiveness of neuromorphic computing for acoustic based traffic monitoring systems. A system will be developed that can accurately classify real-time audio input from roadside traffic as either cars or commercial vehicles, using a Spiking Neural Network (SNN) deployed on the Xylo development kit [7].  
+
+This report details how to setup and run the developed prototype. This includes the Spiking Neural Network model, front end UI and the blog page. It also contains some background information on Xylo and Rockpool.
 
 ## Setup
 
@@ -37,6 +42,8 @@ Once complete run the `spike_test.ipynb` file to convert the segements into spik
 
 This process can take may take a day or two to complete.
 
+## Running the Prototype
+
 ### Running the Model
 Ensure that the data preprocessing has been completed and the audio segements have been converted to spikes by refering to the instructions above before running the model. 
 
@@ -66,7 +73,9 @@ Once you run ```npm start``` the webpage should open automatically in your brows
 The website summarising the project is deployed [here](https://haxinator.github.io/AcousticTrafficMonitoring/)
 
 If you wish to make changes you can directly change the md files inside the `docs` subdirectory. To view the changes locally install [Jeykll](https://jekyllrb.com/docs/installation/). Otherwise after you push to Git the project website will update automatically.
- 
+
+## Extra Resources
+
 ### Installing Rockpool (Unnecessary if the above instructions were followed):
 
 Create venv and install rockpool in project directory:
