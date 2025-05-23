@@ -1,5 +1,3 @@
-![image](https://github.com/user-attachments/assets/50d51f9a-db1a-4307-9237-e399bb098881)# AcousticTrafficMonitoring
-
 ## About
 This project will demonstrate the effectiveness of neuromorphic computing for acoustic based traffic monitoring systems. A system will be developed that can accurately classify real-time audio input from roadside traffic as either cars or commercial vehicles, using a Spiking Neural Network (SNN) deployed on the Xylo development kit [7].  
 
