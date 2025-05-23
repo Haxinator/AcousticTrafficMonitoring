@@ -1,5 +1,5 @@
 ## About
-This project will demonstrate the effectiveness of neuromorphic computing for acoustic based traffic monitoring systems. A system will be developed that can accurately classify real-time audio input from roadside traffic as either cars or commercial vehicles, using a Spiking Neural Network (SNN) deployed on the Xylo development kit [7].  
+This project will demonstrate the effectiveness of neuromorphic computing for acoustic based traffic monitoring systems. A system will be developed that can accurately classify real-time audio input from roadside traffic as either cars or commercial vehicles, using a Spiking Neural Network (SNN) deployed on the Xylo development kit.  
 
 This report details how to setup and run the developed prototype. This includes the Spiking Neural Network model, front end UI and the blog page. It also contains some background information on Xylo and Rockpool.
 
