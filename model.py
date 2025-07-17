@@ -8,6 +8,7 @@ In 100 epochs:
 #Use SynNet to start. We Will need to develop our own architecture later.
 #Still able to make some small adjustments to the network though.
 from rockpool.nn.networks import SynNet
+from rockpool.nn.modules import LIFExodus
 # - Import torch training utilities
 import torch
 from torch.optim import Adam
@@ -42,6 +43,7 @@ net_channels = 16
 
 # - Use a GPU if available for faster training
 dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+#dev  ="cpu"
 device = torch.device(dev)
 
 #ONLY FOR TEST----------------------------------------------
@@ -129,10 +131,14 @@ test_dl = DataLoader(test_data, num_workers=8, batch_size=256,
 base_dir = os.path.dirname(os.path.abspath('__file__'))
 base_dir = os.path.join(base_dir, "DataPreprocessing/npy")
 train_path = os.path.join(base_dir, "Train")
-val_path = os.path.join(base_dir, "Validation")
+test_path = os.path.join(base_dir, "Test")
+val_path = os.path.join(base_dir, "Val")
 
 if not os.path.exists(train_path):
         logging.error(f"folder not found at: {train_path}")
+        exit(1)
+if not os.path.exists(test_path):
+        logging.error(f"folder not found at: {test_path}")
         exit(1)
 if not os.path.exists(val_path):
         logging.error(f"folder not found at: {val_path}")
@@ -151,6 +157,13 @@ training_data = datasets.DatasetFolder(
 )
 
 test_data = datasets.DatasetFolder(
+    root=test_path,
+    loader=npy_loader,
+    extensions=['.npy'],
+  #  transform=ToTensor()
+)
+
+val_data = datasets.DatasetFolder(
     root=val_path,
     loader=npy_loader,
     extensions=['.npy'],
@@ -174,6 +187,15 @@ disk_train_dataset = tonic.DiskCachedDataset(
     reset_cache = True,
   )
 
+disk_val_dataset = tonic.DiskCachedDataset(
+    dataset=val_data ,
+    # transform = torch.Tensor,lambda x: torch.tensor(x).to_sparse(),
+    cache_path=f"cache/{val_data.__class__.__name__}/train/{net_channels}/",
+    # target_transform=lambda x: torch.tensor(x),
+    reset_cache = True,
+  )
+
+
 #probably don't need to cache test data lol
 disk_test_dataset = tonic.DiskCachedDataset(
     dataset=test_data,
@@ -184,6 +206,7 @@ disk_test_dataset = tonic.DiskCachedDataset(
   )
 
 train_dl = DataLoader(disk_train_dataset, **dataloader_kwargs)
+val_dl = DataLoader(disk_val_dataset, **dataloader_kwargs)
 test_dl = DataLoader(disk_test_dataset, **dataloader_kwargs)
 
 #in reality need to use dataloader to open file.
@@ -195,6 +218,7 @@ torch.manual_seed(1234)
 # Need to experiment with number of layers, neurons and time constants.
 net = SynNet(
     #Dylan recommended this since it will make the optimiser work better.
+    neuron_model = LIFExodus,
     #output="vmem",                         # Use the membrane potential as the output of the network.
     p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
 
@@ -207,105 +231,147 @@ net = SynNet(
     time_constants_per_layer = [2, 4, 8],   # Number of time constants in each hidden layer (taken from tutorial)
 ).to(dev)
 
+#compile model to make it FAST
+#net.compile()
+
 #print(net)
 #show trainable parameters (time constants should be empty dict otherwise they will be trained)
 #print(net.parameters)
 
-#pass parameters to optimise and the learning rate (lr) respectively to adam.
-optimiser = Adam(net.parameters().astorch(), lr=1e-3)
 
-#Dylan recommends using MSE for loss
-#results in slightly higher accuracy compared to other functions
-#loss_function = MSELoss()
-loss_function = CrossEntropyLoss()
+#in function so we can compile training to make it sonic speed.
+#@torch.compile
+def train():
+    #pass parameters to optimise and the learning rate (lr) respectively to adam.
+    optimiser = Adam(net.parameters().astorch(), lr=1e-3)
 
-#very basic barebones training loop.
-#no constraints used
-#no regularisations used
-#no validation accuracy used
-#no acceleration used
-#GPU much faster.
+    #Dylan recommends using MSE for loss
+    #results in slightly higher accuracy compared to other functions
+    #loss_function = MSELoss()
+    loss_function = CrossEntropyLoss()
 
-#Training loop
-#trange gives cool progress bar
-for epoch in trange(n_epochs):
+    #very basic barebones training loop.
+    #no constraints used
+    #no regularisations used
+    #no validation accuracy used
+    #no acceleration used
+    #GPU much faster.
 
-    #for calculating accuracy
-    correct = 0
-    total = 0
+    best_val_acc = -1
+    best_bot = {}
 
-    #batching done by torch/tonic dataloader
-    for events, labels in train_dl:
-        events, labels = events.to(device), labels.to(device)
-        optimiser.zero_grad()
+    #Training loop
+    #trange gives cool progress bar
+    for epoch in trange(n_epochs):
+        net.train()
 
-        #output, _, _ = net(events)
-        output, _, _ = net(torch.Tensor(events).float())
+        #for calculating accuracy
+        correct = 0
+        total = 0
 
-        #number of spikes on output channels gives prediction
-        #target channel should have most number of spikes
+        #batching done by torch/tonic dataloader
+        for events, labels in train_dl:
+            events, labels = events.to(device), labels.to(device)
+            optimiser.zero_grad()
 
-        #TODO figure this out so I can measure accuracy
-        sum = torch.cumsum(output, dim=1)
-        loss = loss_function(sum[:,-1,:], labels)
+            #output, _, _ = net(events)
+            output, _, _ = net(torch.Tensor(events).float())
 
-        #pred = torch.sum(output, dim=1)
+            #number of spikes on output channels gives prediction
+            #target channel should have most number of spikes
 
-        #loss = loss_function(pred, labels)
+            #TODO figure this out so I can measure accuracy
+            sum = torch.cumsum(output, dim=1)
+            loss = loss_function(sum[:,-1,:], labels)
 
-        loss.backward()
-        optimiser.step()
+            #pred = torch.sum(output, dim=1)
 
-        #Calculate the number of correct answers
-        predicted = torch.argmax(sum[:,-1,:], 1)
+            #loss = loss_function(pred, labels)
 
-        #to get number of datafiles and number of correct guesses
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
+            loss.backward()
+            optimiser.step()
 
-    accuracy = 100 * correct / total
-    print(f'Epoch {epoch}/{n_epochs}, loss {loss.item():.2f}, accuracy {accuracy:.2f}')
+            #Calculate the number of correct answers
+            predicted = torch.argmax(sum[:,-1,:], 1)
 
-#with our trainned net make a predicition on a file
-'''
-events, label = train_data[4]
+            #to get number of datafiles and number of correct guesses
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
 
-out, _, rd = net(events, record = True)
+        # VAL LOOP
+        accuracy_val = -1
 
-time, channels = torch.where(out[0])
+        with torch.no_grad():
+            net.eval()
+            val_correct = 0
+            val_total = 0
 
-#plot predition.
-plt.plot(time * net_dt, channels, '|')
-plt.xlim([0,1])
-plt.ylim([-1,3])
-plt.plot(0.01, label, '>', ms=18) #show highlight correct label on plot
-plt.show()
+            for events, labels in val_dl:
+                events, labels = events.to(dev), labels.to(dev)
+                output, _, _ = net(torch.Tensor(events).float())
 
-train_dl = torch.utils.data.DataLoader(
-    tonic.DiskCachedDataset(
-        dataset=SubsetClasses(train_data, range(3)),
-        cache_path=f"cache/{train_data.__class__.__name__}/train/{net_channels}/{net_dt}",
-        reset_cache = False,
-    ),
-    **dataloader_kwargs
-)
-'''
+                sum = torch.cumsum(output, dim=1)
 
-# TEST LOOP
-with torch.no_grad():
-    correct = 0
-    total = 0
+                predicted = torch.argmax(sum[:,-1,:], 1)
+                val_total += labels.size(0)
+                val_correct += (predicted == labels).sum().item()
 
-    for events, labels in test_dl:
-        events, labels = events.to(dev), labels.to(dev)
-        output, _, _ = net(torch.Tensor(events).float())
+            accuracy_val = (val_correct/val_total)*100
 
-        sum = torch.cumsum(output, dim=1)
+        if(accuracy_val > best_val_acc):
+            best_val_acc = accuracy_val
 
-        predicted = torch.argmax(sum[:,-1,:], 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
+            # save model
+            net.save("Synnet.json")
+            print("New best model saved!")
 
-    accuracy_test = (correct/total)*100
+        accuracy = 100 * correct / total
+        print(f'Epoch {epoch}/{n_epochs}, Loss {loss.item():.2f}, Training Accuracy {accuracy:.2f}, Val Accuracy {accuracy_val:.2f}')
 
-print(f"Test Accuracy: {accuracy_test:.3f}%")
+    #with our trainned net make a predicition on a file
+    '''
+    events, label = train_data[4]
+
+    out, _, rd = net(events, record = True)
+
+    time, channels = torch.where(out[0])
+
+    #plot predition.
+    plt.plot(time * net_dt, channels, '|')
+    plt.xlim([0,1])
+    plt.ylim([-1,3])
+    plt.plot(0.01, label, '>', ms=18) #show highlight correct label on plot
+    plt.show()
+
+    train_dl = torch.utils.data.DataLoader(
+        tonic.DiskCachedDataset(
+            dataset=SubsetClasses(train_data, range(3)),
+            cache_path=f"cache/{train_data.__class__.__name__}/train/{net_channels}/{net_dt}",
+            reset_cache = False,
+        ),
+        **dataloader_kwargs
+    )
+    '''
+
+    # TEST LOOP
+    with torch.no_grad():
+        correct = 0
+        total = 0
+
+        for events, labels in test_dl:
+            events, labels = events.to(dev), labels.to(dev)
+            output, _, _ = net(torch.Tensor(events).float())
+
+            sum = torch.cumsum(output, dim=1)
+
+            predicted = torch.argmax(sum[:,-1,:], 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+        accuracy_test = (correct/total)*100
+
+    print(f"Test Accuracy: {accuracy_test:.3f}%")
+
+
+#lol train
+train()

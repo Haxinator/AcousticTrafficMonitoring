@@ -47,6 +47,19 @@ This process can take may take a day or two to complete.
 
 ## Running the Prototype
 
+### Cuda Enabled Model
+model.py uses exodus as the backend to support CUDA, which allows training to be done on the GPU resulting in faster epochs (training). To use this model you must meet the following Criteria:
+1. You must have an Nvidia GPU
+2. You must install CUDA from the NVIDIA website.
+3. You must run ```pip install "rockpool[sinabs, exodus]"```
+
+If upon restarting the shell the 'exodus' module is not found, redo step 3.
+
+For step 2, the following resource was used since ```model.py``` was developed in [WSL](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
+In section 3, I followed option 1 and went to the following [download page](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=WSL-Ubuntu&target_version=2.0&target_type=deb_local). For installer type I chose **runfile (local)** and followed the instructions provided.
+
+If you encounter issues when running the installer, delete it and redownload the installer. If the download is interupted the installer will get corrupted and fail to run.
+
 ### Running the Model
 Ensure that the data preprocessing has been completed and the audio segements have been converted to spikes by refering to the instructions above before running the model. 
 
