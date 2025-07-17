@@ -53,9 +53,11 @@ model.py uses exodus as the backend to support CUDA, which allows training to be
 2. You must install CUDA from the NVIDIA website.
 3. You must run ```pip install "rockpool[sinabs, exodus]"```
 
+
+#### Trouble Shooting
 If upon restarting the shell the 'exodus' module is not found, redo step 3.
 
-For step 2, the following resource was used since ```model.py``` was developed in [WSL](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
+For step 2, the following [resource](https://docs.nvidia.com/cuda/wsl-user-guide/index.html) was used since ```model.py``` was developed in WSL.
 In section 3, I followed option 1 and went to the following [download page](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=WSL-Ubuntu&target_version=2.0&target_type=deb_local). For installer type I chose **runfile (local)** and followed the instructions provided.
 
 If you encounter issues when running the installer, delete it and redownload the installer. If the download is interupted the installer will get corrupted and fail to run.

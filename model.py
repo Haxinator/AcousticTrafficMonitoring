@@ -43,90 +43,8 @@ net_channels = 16
 
 # - Use a GPU if available for faster training
 dev = "cuda:0" if torch.cuda.is_available() else "cpu"
-#dev  ="cpu"
 device = torch.device(dev)
 
-#ONLY FOR TEST----------------------------------------------
-'''
-shd_classes = 20
-net_channels = 16
-
-shd_timestep = 1e-6
-shd_channels = 700
-net_dt = 10e-3
-sample_T = 250
-
-#events, label = train_data[1]
-#times = events['t'] * shd_timestep
-#channels = events['x']
-#plt.plot(times, channels, '|')
-#plt.show()
-
-transform = T.Compose([
-    #downsamples files to 16 channels and reduces timstep
-    T.Downsample(time_factor=shd_timestep/net_dt, spatial_factor= net_channels/shd_channels),
-    #rasterise
-    T.ToFrame(sensor_size=(net_channels, 1, 1), time_window=1),
-    #convert to tensor
-    torch.Tensor,
-    #trim in time
-    lambda m: torch.squeeze(m)[:sample_T:, :],
-])
-
-#loads SHD dataset and puts it into ./data folder
-#applies transformation pipeline described above
-train_data = tonic.datasets.SHD('./data', transform=transform) #Download SHD dataset into data folder (in SHD subfolder)
-
-raster, label = train_data[1]
-
-#show a downsampled audio file.
-#plt.imshow(raster.T, aspect='auto')
-#plt.show()
-
-#class which subsets dataset labels (we only want to use 3 digits of the dataset)
-class SubsetClasses(torch.utils.data.Dataset):
-    def __init__(self, dataset, matchinglabels):
-        indicies = []
-
-        for idx in range(len(dataset)):
-            _, label = dataset[idx]
-            if label in matchinglabels:
-                indicies.append(idx)
-
-        self._subset_ds = torch.utils.data.Subset(dataset, indicies)
-        self._len = len(indicies)
-
-    def __getitem__(self, index):
-        return self._subset_ds[index]
-    
-    def __len__(self):
-        return self._len
-    
-dataloader_kwargs = dict(
-    batch_size = 128,
-    shuffle=True,
-    drop_last=True,
-    pin_memory=True,
-    collate_fn=tonic.collation.PadTensors(batch_first=True),
-    num_workers=0,
-)
-
-train_dl = torch.utils.data.DataLoader(
-    tonic.DiskCachedDataset(
-        #dataset=SubsetClasses(train_data, range(3)),
-        dataset=train_data,
-        cache_path=f"cache/{train_data.__class__.__name__}/train/{net_channels}/{net_dt}",
-        reset_cache = False,
-    ),
-    **dataloader_kwargs
-)
-
-test_data = datasets.SHD('./data', train=False, transform=transform)
-test_dl = DataLoader(test_data, num_workers=8, batch_size=256,
-                          collate_fn=tonic.collation.PadTensors(batch_first=True), drop_last=True, shuffle=False)
-
-############# END TEST DATA------------------------------------------
-'''
 
 base_dir = os.path.dirname(os.path.abspath('__file__'))
 base_dir = os.path.join(base_dir, "DataPreprocessing/npy")
@@ -190,7 +108,7 @@ disk_train_dataset = tonic.DiskCachedDataset(
 disk_val_dataset = tonic.DiskCachedDataset(
     dataset=val_data ,
     # transform = torch.Tensor,lambda x: torch.tensor(x).to_sparse(),
-    cache_path=f"cache/{val_data.__class__.__name__}/train/{net_channels}/",
+    cache_path=f"cache/{val_data.__class__.__name__}/val/{net_channels}/",
     # target_transform=lambda x: torch.tensor(x),
     reset_cache = True,
   )
@@ -229,7 +147,7 @@ net = SynNet(
     n_classes = n_labels,                          # Number of output classes (car, commercial, background noise).
     size_hidden_layers = [24, 24, 24],      # Number of neurons in each hidden layer (taken from tutorial)
     time_constants_per_layer = [2, 4, 8],   # Number of time constants in each hidden layer (taken from tutorial)
-).to(dev)
+).to(device)
 
 #compile model to make it FAST
 #net.compile()
@@ -238,27 +156,28 @@ net = SynNet(
 #show trainable parameters (time constants should be empty dict otherwise they will be trained)
 #print(net.parameters)
 
+#pass parameters to optimise and the learning rate (lr) respectively to adam.
+optimiser = Adam(net.parameters().astorch(), lr=1e-3)
+
+#Dylan recommends using MSE for loss
+#results in slightly higher accuracy compared to other functions
+#loss_function = MSELoss()
+loss_function = CrossEntropyLoss()
+
+#no constraints used
+#no regularisations used
+
+best_val_acc = -1
+best_bot = {}
+train_acc_list = []
+train_loss_list = []
+val_acc_list = []
+
 
 #in function so we can compile training to make it sonic speed.
 #@torch.compile
-def train():
-    #pass parameters to optimise and the learning rate (lr) respectively to adam.
-    optimiser = Adam(net.parameters().astorch(), lr=1e-3)
-
-    #Dylan recommends using MSE for loss
-    #results in slightly higher accuracy compared to other functions
-    #loss_function = MSELoss()
-    loss_function = CrossEntropyLoss()
-
-    #very basic barebones training loop.
-    #no constraints used
-    #no regularisations used
-    #no validation accuracy used
-    #no acceleration used
-    #GPU much faster.
-
-    best_val_acc = -1
-    best_bot = {}
+def train(net, train_dl, val_dl, test_dl):
+    global train_acc_list, train_loss_list, val_acc_list, best_bot, best_val_acc, optimiser, loss_function, device
 
     #Training loop
     #trange gives cool progress bar
@@ -307,7 +226,7 @@ def train():
             val_total = 0
 
             for events, labels in val_dl:
-                events, labels = events.to(dev), labels.to(dev)
+                events, labels = events.to(device), labels.to(device)
                 output, _, _ = net(torch.Tensor(events).float())
 
                 sum = torch.cumsum(output, dim=1)
@@ -326,40 +245,19 @@ def train():
             print("New best model saved!")
 
         accuracy = 100 * correct / total
+        train_acc_list.append(accuracy)
+        val_acc_list.append(accuracy_val)
+        train_loss_list.append(loss.item())
         print(f'Epoch {epoch}/{n_epochs}, Loss {loss.item():.2f}, Training Accuracy {accuracy:.2f}, Val Accuracy {accuracy_val:.2f}')
 
-    #with our trainned net make a predicition on a file
-    '''
-    events, label = train_data[4]
 
-    out, _, rd = net(events, record = True)
-
-    time, channels = torch.where(out[0])
-
-    #plot predition.
-    plt.plot(time * net_dt, channels, '|')
-    plt.xlim([0,1])
-    plt.ylim([-1,3])
-    plt.plot(0.01, label, '>', ms=18) #show highlight correct label on plot
-    plt.show()
-
-    train_dl = torch.utils.data.DataLoader(
-        tonic.DiskCachedDataset(
-            dataset=SubsetClasses(train_data, range(3)),
-            cache_path=f"cache/{train_data.__class__.__name__}/train/{net_channels}/{net_dt}",
-            reset_cache = False,
-        ),
-        **dataloader_kwargs
-    )
-    '''
-
-    # TEST LOOP
+    # TEST LOOP (after training)
     with torch.no_grad():
         correct = 0
         total = 0
 
         for events, labels in test_dl:
-            events, labels = events.to(dev), labels.to(dev)
+            events, labels = events.to(device), labels.to(device)
             output, _, _ = net(torch.Tensor(events).float())
 
             sum = torch.cumsum(output, dim=1)
@@ -374,4 +272,20 @@ def train():
 
 
 #lol train
-train()
+train(net, train_dl, val_dl, test_dl)
+
+#with our trainned net make a predicition on a file
+'''
+events, label = train_data[4]
+
+out, _, rd = net(events, record = True)
+
+time, channels = torch.where(out[0])
+
+#plot predition.
+plt.plot(time * net_dt, channels, '|')
+plt.xlim([0,1])
+plt.ylim([-1,3])
+plt.plot(0.01, label, '>', ms=18) #show highlight correct label on plot
+plt.show()
+'''
