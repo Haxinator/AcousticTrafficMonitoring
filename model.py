@@ -14,7 +14,7 @@ import torch
 from torch.optim import Adam
 from torch.nn import MSELoss
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 import torch.nn.functional as F
@@ -55,6 +55,16 @@ train_path = os.path.join(base_dir, "Train")
 test_path = os.path.join(base_dir, "Test")
 val_path = os.path.join(base_dir, "Val")
 
+dataloader_kwargs = dict(
+    batch_size=512,
+    shuffle=True,
+    drop_last=True,
+    pin_memory=True,
+    #collate_fn=tonic.collation.PadTensors(batch_first=True),
+    num_workers=6,
+)
+
+'''
 #if files can be found
 if not os.path.exists(train_path):
         logging.error(f"folder not found at: {train_path}")
@@ -92,15 +102,6 @@ val_data = datasets.DatasetFolder(
   #  transform=ToTensor()
 )
 
-dataloader_kwargs = dict(
-    batch_size=128,
-    shuffle=True,
-    drop_last=True,
-    pin_memory=True,
-    collate_fn=tonic.collation.PadTensors(batch_first=True),
-    num_workers=8,
-)
-
 #caching data
 disk_train_dataset = tonic.DiskCachedDataset(
     dataset=training_data,
@@ -131,6 +132,31 @@ disk_test_dataset = tonic.DiskCachedDataset(
 train_dl = DataLoader(disk_train_dataset, **dataloader_kwargs)
 val_dl = DataLoader(disk_val_dataset, **dataloader_kwargs)
 test_dl = DataLoader(disk_test_dataset, **dataloader_kwargs)
+
+'''
+
+mingDataPath = os.path.join(dir, "npy")
+
+#CUDA results in x5 speed increase.
+#ming data results in x6 speed increase.
+#data caching significantly slower (6x slower) than loading ming data.
+
+#load ming data
+X_train = torch.from_numpy(np.load(os.path.join(mingDataPath, "X_train.npy"))).float()
+y_train = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_train.npy"))).long()
+X_val = torch.from_numpy(np.load(os.path.join(mingDataPath, "X_val.npy"))).float()
+y_val = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_val.npy"))).long()
+X_test = torch.from_numpy(np.load(os.path.join(mingDataPath, "X_test.npy"))).float()
+y_test = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_test.npy"))).long()
+
+train_ds = TensorDataset(X_train, y_train)
+val_ds = TensorDataset(X_val, y_val)
+test_ds = TensorDataset(X_test, y_test)
+
+train_dl = DataLoader(train_ds, **dataloader_kwargs)
+val_dl = DataLoader(val_ds, **dataloader_kwargs)
+test_dl = DataLoader(test_ds, **dataloader_kwargs)
+
 
 # A manual seed ensures repeatability
 torch.manual_seed(1234) 
@@ -173,8 +199,8 @@ def one_hot_mse_loss(outputs, labels, num_classes):
 #no regularisations used
 
 #where the model and statistics will be saved
-stat_file_name = "Stats.json"
-model_file_name = "Model.json"
+stat_file_name = "MingStats.json"
+model_file_name = "MingModel.json"
 best_val_acc = -1
 correct = 0
 total = 0
