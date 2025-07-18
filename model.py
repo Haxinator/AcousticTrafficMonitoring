@@ -56,12 +56,12 @@ test_path = os.path.join(base_dir, "Test")
 val_path = os.path.join(base_dir, "Val")
 
 dataloader_kwargs = dict(
-    batch_size=512,
+    batch_size=128,
     shuffle=True,
     drop_last=True,
     pin_memory=True,
-    #collate_fn=tonic.collation.PadTensors(batch_first=True),
-    num_workers=6,
+    collate_fn=tonic.collation.PadTensors(batch_first=True),
+    num_workers=8,
 )
 
 '''
@@ -253,7 +253,7 @@ def train(net, train_dl, val_dl, test_dl):
             #to get number of datafiles and number of correct guesses
             stats["total"] += labels.size(0)
             stats["correct"] += (predicted == labels).sum().item()
-            stats["total_loss"] += loss.item() * labels.size(0)
+            stats["total_loss"] += loss.item() * events.size(0)
 
         # VAL LOOP
         accuracy_val = -1
@@ -265,7 +265,7 @@ def train(net, train_dl, val_dl, test_dl):
 
             for events, labels in val_dl:
                 events, labels = events.to(device), labels.to(device)
-                output, _, _ = net(torch.Tensor(events).float())
+                output, _, _ = net(events)
 
                 sum_out = torch.cumsum(output[:,skip_window:,:], dim=1)[:, -1, :]  # time axis = 1
                 #sum = torch.cumsum(output, dim=1)
