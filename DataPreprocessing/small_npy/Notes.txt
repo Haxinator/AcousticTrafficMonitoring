@@ -1,0 +1,19 @@
+Training can't exceed 43%. Why?
+
+The 43% accuracy is coming from distinguishing cv and background.
+
+The data is bad.
+Car and background indistinguishable. Absolutely no improvement to accuracy. -> car "sounds" contain too much background noise or there is no car noise.
+Car and cv indistinguishable. Absolutely no improvement to accuracy. -> car and cv likely sound the same.
+cv and background can be distinguished (decent accuracy 68%).
+
+Fix:
+car seems ok, some car noises very faint might be indistinguishable from background or cv.
+car and background -> background class contains lots of car noises e.g. loc1_train_00006_sec01, loc1_train_00000_sec01, etc.
+Car and cv -> some cars sound like cvs. Maybe when the noise is faint they're indistinguishable. Augmentation may make them sound the same?
+
+
+Model:
+convolutional layer -> not necessary (no information gained from clustered events, used for speech or images).
+recorrent layer -> not necessary (used for natural language and time-series, has a memory, have snn so pointless).
+Transformer -> not needed (encoding and decoding mostly used for NLP).

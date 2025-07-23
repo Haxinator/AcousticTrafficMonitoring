@@ -47,10 +47,12 @@ net_channels = 16
 # - Use a GPU if available for faster training
 dev = "cuda:0" if torch.cuda.is_available() else "cpu"
 device = torch.device(dev)
+print(f"⚙️ Using device: {device}")
 
 # ----------------------------- LOAD DATA --------------------------#
 dir = os.path.dirname(os.path.abspath('__file__'))
-base_dir = os.path.join(dir, "DataPreprocessing/npy")
+base_dir = os.path.join(dir, "DataPreprocessing", "new_npy")
+
 train_path = os.path.join(base_dir, "Train")
 test_path = os.path.join(base_dir, "Test")
 val_path = os.path.join(base_dir, "Val")
@@ -64,7 +66,7 @@ dataloader_kwargs = dict(
     num_workers=8,
 )
 
-'''
+
 #if files can be found
 if not os.path.exists(train_path):
         logging.error(f"folder not found at: {train_path}")
@@ -102,6 +104,8 @@ val_data = datasets.DatasetFolder(
   #  transform=ToTensor()
 )
 
+
+'''
 #caching data
 disk_train_dataset = tonic.DiskCachedDataset(
     dataset=training_data,
@@ -134,7 +138,12 @@ val_dl = DataLoader(disk_val_dataset, **dataloader_kwargs)
 test_dl = DataLoader(disk_test_dataset, **dataloader_kwargs)
 
 '''
+train_dl = DataLoader(training_data, **dataloader_kwargs)
+val_dl = DataLoader(val_data, **dataloader_kwargs)
+test_dl = DataLoader(test_data, **dataloader_kwargs)
 
+
+'''
 mingDataPath = os.path.join(dir, "npy")
 
 #CUDA results in x5 speed increase.
@@ -156,7 +165,7 @@ test_ds = TensorDataset(X_test, y_test)
 train_dl = DataLoader(train_ds, **dataloader_kwargs)
 val_dl = DataLoader(val_ds, **dataloader_kwargs)
 test_dl = DataLoader(test_ds, **dataloader_kwargs)
-
+'''
 
 # A manual seed ensures repeatability
 torch.manual_seed(1234) 
@@ -165,7 +174,7 @@ torch.manual_seed(1234)
 # Need to experiment with number of layers, neurons and time constants.
 net = SynNet(
     neuron_model = LIFExodus,
-    output="vmem",                         # Use the membrane potential as the output of the network.
+   # output="vmem",                         # Use the membrane potential as the output of the network.
     p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
 
     #time constants and threshold are not trainable by default.
@@ -185,22 +194,22 @@ net = SynNet(
 #print(net.parameters)
 
 #pass parameters to optimise and the learning rate (lr) respectively to adam.
+#must be done after model is moved to GPU (otherwise learning won't occur)
 optimiser = Adam(net.parameters().astorch(), lr=1e-3)
 
 #Dylan recommends using MSE for loss
 #results in slightly higher accuracy compared to other functions
 #loss_function = MSELoss()
-#loss_function = CrossEntropyLoss()
+loss_function = CrossEntropyLoss()
+'''
 def one_hot_mse_loss(outputs, labels, num_classes):
     target_onehot = F.one_hot(labels, num_classes=num_classes).float().to(outputs.device)
     return F.mse_loss(outputs, target_onehot)
-
+'''
 #no constraints used
 #no regularisations used
 
 #where the model and statistics will be saved
-stat_file_name = "MingStats.json"
-model_file_name = "MingModel.json"
 best_val_acc = -1
 correct = 0
 total = 0
@@ -222,38 +231,36 @@ def train(net, train_dl, val_dl, test_dl):
 
     #Training loop
     #trange gives cool progress bar
-    for _ in trange(n_epochs):
+    for _ in trange(100):
         stats["total_epochs"] += 1
         net.train()
+        loss = 0.0
 
         #batching done by torch/tonic dataloader
         for events, labels in train_dl:
             events, labels = events.to(device), labels.to(device)
+            #prevent exploding gradients by reseting gradients every loop
             optimiser.zero_grad()
             
             output, _, _ = net(events)
 
-            sum_out = torch.cumsum(output[:,skip_window:,:], dim=1)[:, -1, :]  # time axis = 1
-            loss = one_hot_mse_loss(sum_out, labels, num_classes=n_labels)
+            #sum_out = torch.cumsum(output[:,skip_window:,:], dim=1)[:, -1, :]  # time axis = 1
+            #loss = one_hot_mse_loss(sum_out, labels, num_classes=n_labels)
 
-            #TODO figure this out so I can measure accuracy
-            #sum = torch.cumsum(output, dim=1)
-            #loss = loss_function(sum[:,-1,:], labels)
-
-            #pred = torch.sum(output, dim=1)
-
-            #loss = loss_function(pred, labels)
-
+            sum_out = torch.cumsum(output, dim=1)
+            loss = loss_function(sum_out[:,-1,:], labels)
+            
             loss.backward()
+            #step must be done after calling backward.
             optimiser.step()
 
-            #Calculate the number of correct answers
-            predicted = torch.argmax(sum_out, dim=1)
+            predicted = torch.argmax(sum_out[:,-1,:], 1)
 
             #to get number of datafiles and number of correct guesses
             stats["total"] += labels.size(0)
             stats["correct"] += (predicted == labels).sum().item()
             stats["total_loss"] += loss.item() * events.size(0)
+           # loss += loss.item()
 
         # VAL LOOP
         accuracy_val = -1
@@ -267,10 +274,10 @@ def train(net, train_dl, val_dl, test_dl):
                 events, labels = events.to(device), labels.to(device)
                 output, _, _ = net(events)
 
-                sum_out = torch.cumsum(output[:,skip_window:,:], dim=1)[:, -1, :]  # time axis = 1
-                #sum = torch.cumsum(output, dim=1)
+                #sum_out = torch.cumsum(output[:,skip_window:,:], dim=1)[:, -1, :]  # time axis = 1
+                sum_out = torch.cumsum(output, dim=1)
 
-                predicted = torch.argmax(sum_out, dim=1)
+                predicted = torch.argmax(sum_out[:,-1,:], 1)
                 val_total += labels.size(0)
                 val_correct += (predicted == labels).sum().item()
 
@@ -318,7 +325,10 @@ def train(net, train_dl, val_dl, test_dl):
 
 
 # ---------------- Program Start---------------------#
-
+#%%
+stat_file_name = "New_Stats.json"
+model_file_name = "New_Model.json"
+#%%
 #load model if save exists.
 if os.path.exists(os.path.join(dir, model_file_name)):
     net.load(model_file_name)
@@ -334,8 +344,19 @@ if trainModel:
     #lol train
     train(net, train_dl, val_dl, test_dl)
 else:
+    #%%
+    import matplotlib.pyplot as plt
+    import json
+    import os
+    dir = os.path.dirname(os.path.abspath('__file__'))
+    stats = {}
+
+    if os.path.exists(os.path.join(dir, stat_file_name)):
+        with open(stat_file_name, "r", encoding="utf-8") as stat_file:
+            stats = json.load(stat_file)
+
     #show stats
-    epochs = list(range(stats["total_epochs"]))
+    epochs = list(range(stats["total_epochs"]+1))
 
     # Accuracy Curve
     plt.figure(figsize=(10, 4))
@@ -358,6 +379,7 @@ else:
     plt.grid(True)
 
     plt.tight_layout()
+    plt.savefig("lastestDataset")
     plt.show()
 
     #with our trainned net make a predicition on a file
@@ -375,3 +397,4 @@ else:
     plt.plot(0.01, label, '>', ms=18) #show highlight correct label on plot
     plt.show()
     '''
+# %%
