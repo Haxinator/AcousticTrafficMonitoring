@@ -379,7 +379,7 @@ else:
     plt.grid(True)
 
     plt.tight_layout()
-    plt.savefig("lastestDataset")
+    plt.savefig(os.path.join("plots","lastestDataset"))
     plt.show()
 
     #with our trainned net make a predicition on a file
