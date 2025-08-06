@@ -128,6 +128,15 @@ f = 0.9
 input_spikes = np.random.rand(T, net_in_channels) < f
 TSEvent.from_raster(input_spikes, dt, name = 'Poisson input events').plot()
 
+# ----------- Load car, vehicle and bg sound (for testing)--------------#
+dir = os.path.dirname(os.path.abspath('__file__'))
+base_dir = os.path.join(dir, "DataPreprocessing", "small", "samples")
+car_sample = np.load(os.path.join(base_dir,"car.npy"), allow_pickle=True)
+cv_sample = np.load(os.path.join(base_dir,"cv.npy"), allow_pickle=True)
+bg_sample = np.load(os.path.join(base_dir,"bg.npy"), allow_pickle=True)
+
+samples = [car_sample, cv_sample, bg_sample]
+
 #-----------------------RUN--------------------------#
 #need to add microphone stuff here when actually running in free-inference (input from mic)
 freeInferenceMode = False
@@ -154,51 +163,59 @@ if freeInferenceMode:
 
 list_of_detected_cars = []
 
-#dynamically choose whether to sim or run on hdk with or without free-inference mode.
-if hdk:
-    if modMonitor:
-        # - Perform inference on the Xylo board
-        # - The following line will evolve XyloMonitor for T time steps.
-        # - Keep in mind that this mode is using the microphone as input, hence the output might change according to the ambience noise
-        output, _, r_d = modMonitor(input_data=np.zeros((T, net_in_channels)))
+if modMonitor:
+    #loop once only
+    samples = []
+
+fignum = 0
+
+for sample in samples:
+    fignum = fignum + 1
+    #dynamically choose whether to sim or run on hdk with or without free-inference mode.
+    if hdk:
+        if modMonitor:
+            # - Perform inference on the Xylo board
+            # - The following line will evolve XyloMonitor for T time steps.
+            # - Keep in mind that this mode is using the microphone as input, hence the output might change according to the ambience noise
+            output, _, r_d = modMonitor(input_data=np.zeros((T, net_in_channels)))
+        else:
+            output, _, r_d = modSamna(sample, record = True)
     else:
-        output, _, r_d = modSamna(input_spikes, record = True)
-else:
-    output, _, r_d = modSim(input_spikes, record = True)
+        output, _, r_d = modSim(sample, record = True)
 
-print(output)
+    print(output)
 
-prediction = np.argmax(np.sum(output, axis = 0))
+    prediction = np.argmax(np.sum(output, axis = 0))
 
-print(prediction)
-list_of_detected_cars.append(prediction)
+    print(prediction)
+    list_of_detected_cars.append(prediction)
 
-#----------------SEND DATA TO FRONTEND----------------#
+    #----------------SEND DATA TO FRONTEND----------------#
 
-#ERIC TO DO
+    #ERIC TO DO
 
-#---------------------PLOT OUTPUT-------------------#
-# - Plot some internal state variables
-plt.figure()
-plt.imshow(r_d['Spikes'].T, aspect = 'auto', origin = 'lower')
-plt.title('Hidden spikes')
-plt.ylabel('Channel')
-plt.savefig(os.path.join('plots', 'Spikes.png'))
+    #---------------------PLOT OUTPUT-------------------#
+    # - Plot some internal state variables
+    plt.figure()
+    plt.imshow(r_d['Spikes'].T, aspect = 'auto', origin = 'lower')
+    plt.title('Hidden spikes')
+    plt.ylabel('Channel')
+    plt.savefig(os.path.join('plots', f'Spikes{fignum}.png'))
 
-plt.figure()
-if hdk:
-    TSContinuous(r_d['times'], r_d['Isyn'], name = 'Hidden synaptic currents').plot(stagger = 127)
-else:
-    TSContinuous.from_clocked(r_d['Isyn'], dt, name = 'Hidden synaptic currents').plot(stagger = 127)
-plt.savefig(os.path.join('plots', 'SynaticCurrents.png'))
+    plt.figure()
+    if hdk:
+        TSContinuous(r_d['times'], r_d['Isyn'], name = 'Hidden synaptic currents').plot(stagger = 127)
+    else:
+        TSContinuous.from_clocked(r_d['Isyn'], dt, name = 'Hidden synaptic currents').plot(stagger = 127)
+    plt.savefig(os.path.join('plots', f'SynaticCurrents{fignum}.png'))
 
-plt.figure()
-if hdk:
-    TSContinuous(r_d['times'], r_d['Vmem'], name = 'Hidden membrane potentials').plot(stagger = 127)
-else:
-    TSContinuous.from_clocked(r_d['Vmem'], dt, name = 'Hidden membrane potentials').plot(stagger = 127)
-plt.savefig(os.path.join('plots', 'MembranePotential.png'))
-print('Figures Saved')
+    plt.figure()
+    if hdk:
+        TSContinuous(r_d['times'], r_d['Vmem'], name = 'Hidden membrane potentials').plot(stagger = 127)
+    else:
+        TSContinuous.from_clocked(r_d['Vmem'], dt, name = 'Hidden membrane potentials').plot(stagger = 127)
+    plt.savefig(os.path.join('plots', f'MembranePotential{fignum}.png'))
+    print('Figures Saved')
 
 # free memory just in case
 if hdk is None:
