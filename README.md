@@ -12,19 +12,50 @@ This report details how to setup and run the developed prototype. This includes 
 
 ### Check Python version, and ensure that Python 3.8 or later is installed:
 
+The Python version must be between 3.8-3.11
+
 ```
 python3 --version
 ```
 
+#### Recent Python version
+If your Python version is recent (e.g. 3.13), the rockpool modules will fail to run. The solution is to install an older version of Python. This is demonstrated in the instructions below:
+
+```
+sudo apt install software-properties-common
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+```
+
+This adds the deadsnakes repository, which allows you to install specific python versions via commandline. Next install Python3.10:
+
+```
+sudo apt install python3.10
+```
+
+Since we want to use a virtual environment we need to also install it for this specific version using the following command:
+
+```
+apt install python3.10-venv
+```
+
+Now create a venv with the right python version
+
+```
+python3.10 -m venv <myenvpath>
+```
+
+Now you can simply follow the instructions as normal.
+
 ### Installing Project Dependencies using requirements.txt file
 These instructions were tested using WSL on Ubuntu 24.04LTS
 
-First create a venv:
+First create a venv(unless you already made one):
 ```
 python3 -m venv <myenvpath>
 ```
 
-Source venv:
+Activate the venv:
 ```
 source venv/bin/activate
 ```
