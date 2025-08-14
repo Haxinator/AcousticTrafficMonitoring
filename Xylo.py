@@ -60,7 +60,7 @@ net_in_channels = 16
 dt = 1e-3
 
 net = SynNet(
-    neuron_model = LIFExodus,
+    # neuron_model = LIFExodus,
    # output="vmem",                         # Use the membrane potential as the output of the network.
     p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
 
