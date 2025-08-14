@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
+// Type "npm start" in the terminal to run the FrontEnd
 const TrafficMonitorUI = () => {
   // Dummy datas for presenting, need to replace them with actual data from Backend
-  const [lastCar, setLastCar] = useState('Commercial');
+  const [lastCar, setLastCar] = useState(null);
   const [power, setPower] = useState(80);
 
   const totalCommercial = 8;
@@ -22,6 +23,25 @@ const TrafficMonitorUI = () => {
     { time: '30s', normal: 9, commercial: 6 }, { time: '40s', normal: 9, commercial: 5 },
     { time: '50s', normal: 8, commercial: 4 }, { time: '60s', normal: 7, commercial: 4 }
   ];
+
+  // -------------------- Fetching data from Backend-------------------------
+  useEffect(() => {
+    const fetchLastCar = async () => {
+      try {
+        const res = await fetch("http://localhost:3000/api/lastcar");
+        const data = await res.json();
+        setLastCar(data.lastCar);
+      } catch (err) {
+        console.error("Failed to fetch lastCar:", err);
+      }
+    };
+    fetchLastCar();
+
+    // Control the refresh rate of fetching data
+    const interval = setInterval(fetchLastCar, 1000);
+    return () => clearInterval(interval);
+  }, []);
+  // ------------------------------------------------------------------------
 
   return (
     <div className="min-h-screen bg-black text-white p-6 rounded-3xl flex flex-col gap-6 w-full max-w-7xl mx-auto">
