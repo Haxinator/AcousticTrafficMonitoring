@@ -6,6 +6,10 @@ from rockpool.transform import quantize_methods as q
 from rockpool import TSEvent, TSContinuous
 from rockpool.devices.xylo import find_xylo_hdks
 
+# Use fastapi to connect with the frontend
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 # - Import torch training utilities
 import torch
 from torch.optim import Adam
@@ -37,6 +41,19 @@ if xylo_board_name == 'XyloAudio2':
 elif xylo_board_name == 'XyloAudio3':
     import rockpool.devices.xylo.syns65302 as xa3
     from rockpool.devices.xylo.syns65302 import xa3_devkit_utils as xa3utils
+
+# To run the backend, type "uvicorn main:app --reload --port 3000" in the terminal
+# ----------------------------------- API ------------------------------
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or http://localhost:3000
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# ----------------------------------------------------------------------
+
 
 n_labels = 3
 net_in_channels = 16
@@ -191,8 +208,15 @@ for sample in samples:
     list_of_detected_cars.append(prediction)
 
     #----------------SEND DATA TO FRONTEND----------------#
+    # To run the backend, type "uvicorn main:app --reload --port 3000" in the terminal
 
-    #ERIC TO DO
+
+    # Set the var that want to pass to targetVar
+    targetVar = {0:"Normal",1:"Commercial"}.get(prediction,"Invalid")
+    # Create API
+    @app.get("/api/lastcar")
+    def get_last_car():
+        return {"lastCar": targetVar}
 
     #---------------------PLOT OUTPUT-------------------#
     # - Plot some internal state variables
@@ -225,4 +249,7 @@ else:
         del modMonitor
     
     del modSamna
+
+
+
         
