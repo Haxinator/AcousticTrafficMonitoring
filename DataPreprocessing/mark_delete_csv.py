@@ -2,7 +2,7 @@ import os
 import csv
 import shutil
 
-# Assume script is one level above deleted directory and csv file.
+# Assume script is two level above deleted directory and csv file.
 script_dir = os.path.dirname(os.path.abspath(__file__))
 deleted_dir = os.path.join(script_dir, 'vehicle_segments_peak1/deleted')
 csv_path = os.path.join(script_dir, 'vehicle_segments_peak1/vehicle_clips.csv')
@@ -14,6 +14,7 @@ except FileNotFoundError:
     print(
         f"Error: The directory '{deleted_dir}' was not found. Please check your path.")
     deleted_files = set()
+
 
 temp_csv_path = csv_path + '.tmp'
 updated_rows = []
