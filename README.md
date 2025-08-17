@@ -108,15 +108,24 @@ Python3 model.py
 
 The model will then train on the spike data previously generated. Note that training takes a long time, to reduce training time reduce the number of epochs, however, this will reduce the accuracy of the model.
 
-### Running the Front end
+### Running the Back end
+Make sure FastAPI, Rockpool, OS, numpy and matplotlib are installed.
 
-Make sure npm and Node.js are [installed](https://askubuntu.com/questions/1502744/how-to-install-node-js-latest-version-on-ubuntu-22-04).
+Instead of simply running Xylo.py directly with "Run" button,
+
+Please run ```uvicorn main:app --reload --port 3000``` in the Root directory.
+
+### Running the Front end
+Please run the front end after launched back end.
+
+Make sure React, npm and Node.js are [installed](https://askubuntu.com/questions/1502744/how-to-install-node-js-latest-version-on-ubuntu-22-04).
 
 Once installed run ```npm install ``` in the ```FrontEnd/traffic-ui``` directory.
 
 Followed by ```npm audit fix --force```
 
 Once you run ```npm start``` the webpage should open automatically in your browser, otherwise place the ip address provided in the terminal output in a web browser.
+
 
 ### Viewing the project website
 The website summarising the project is deployed [here](https://haxinator.github.io/AcousticTrafficMonitoring/)
