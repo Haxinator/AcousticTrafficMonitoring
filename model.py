@@ -38,8 +38,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 100
-n_batches = 1
+n_epochs = 2000
+n_batches = 8
 n_time = 100
 n_labels = 3
 net_channels = 16
@@ -50,21 +50,33 @@ device = torch.device(dev)
 print(f"⚙️ Using device: {device}")
 
 # ----------------------------- LOAD DATA --------------------------#
-dir = os.path.dirname(os.path.abspath('__file__'))
-base_dir = os.path.join(dir, "DataPreprocessing", "new_npy")
-
-train_path = os.path.join(base_dir, "Train")
-test_path = os.path.join(base_dir, "Test")
-val_path = os.path.join(base_dir, "Val")
 
 dataloader_kwargs = dict(
-    batch_size=128,
+    batch_size=n_batches,
     shuffle=True,
     drop_last=True,
     pin_memory=True,
     collate_fn=tonic.collation.PadTensors(batch_first=True),
     num_workers=8,
 )
+
+dataloader_val_kwargs = dict(
+    batch_size=n_batches,
+    shuffle=False,
+    drop_last=True,
+    pin_memory=True,
+    collate_fn=tonic.collation.PadTensors(batch_first=True),
+    num_workers=8,
+)
+
+dir = os.path.dirname(os.path.abspath('__file__'))
+base_dir = os.path.join(dir, "DataPreprocessing", "new_npy")
+'''
+train_path = os.path.join(base_dir, "Train")
+test_path = os.path.join(base_dir, "Test")
+val_path = os.path.join(base_dir, "Val")
+
+
 
 
 #if files can be found
@@ -105,7 +117,6 @@ val_data = datasets.DatasetFolder(
 )
 
 
-'''
 #caching data
 disk_train_dataset = tonic.DiskCachedDataset(
     dataset=training_data,
@@ -137,20 +148,18 @@ train_dl = DataLoader(disk_train_dataset, **dataloader_kwargs)
 val_dl = DataLoader(disk_val_dataset, **dataloader_kwargs)
 test_dl = DataLoader(disk_test_dataset, **dataloader_kwargs)
 
-'''
+
 train_dl = DataLoader(training_data, **dataloader_kwargs)
 val_dl = DataLoader(val_data, **dataloader_kwargs)
 test_dl = DataLoader(test_data, **dataloader_kwargs)
 
 
 '''
-mingDataPath = os.path.join(dir, "npy")
+mingDataPath = os.path.join(dir, "DataPreprocessing", "delete_npy")
 
 #CUDA results in x5 speed increase.
 #ming data results in x6 speed increase.
 #data caching significantly slower (6x slower) than loading ming data.
-
-#load ming data
 X_train = torch.from_numpy(np.load(os.path.join(mingDataPath, "X_train.npy"))).float()
 y_train = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_train.npy"))).long()
 X_val = torch.from_numpy(np.load(os.path.join(mingDataPath, "X_val.npy"))).float()
@@ -158,14 +167,29 @@ y_val = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_val.npy"))).long(
 X_test = torch.from_numpy(np.load(os.path.join(mingDataPath, "X_test.npy"))).float()
 y_test = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_test.npy"))).long()
 
+print(X_train.shape)
+print(y_train.shape)
+print(X_val.shape)
+print(y_val.shape)
+
+'''
 train_ds = TensorDataset(X_train, y_train)
 val_ds = TensorDataset(X_val, y_val)
 test_ds = TensorDataset(X_test, y_test)
 
+
 train_dl = DataLoader(train_ds, **dataloader_kwargs)
-val_dl = DataLoader(val_ds, **dataloader_kwargs)
-test_dl = DataLoader(test_ds, **dataloader_kwargs)
+val_dl = DataLoader(val_ds, **dataloader_val_kwargs)
+test_dl = DataLoader(test_ds, **dataloader_val_kwargs)
 '''
+
+train_ds = TensorDataset(X_train, y_train)
+val_ds = TensorDataset(X_val, y_val)
+test_ds = TensorDataset(X_test, y_test)
+
+train_dl = DataLoader(train_ds, batch_size=n_batches, shuffle=True, drop_last=True, pin_memory=True, num_workers=6)
+val_dl = DataLoader(val_ds, batch_size=n_batches, shuffle=False, drop_last=False, pin_memory=True, num_workers=6)
+test_dl = DataLoader(test_ds, batch_size=n_batches, shuffle=False, drop_last=False, pin_memory=True, num_workers=6)
 
 # A manual seed ensures repeatability
 torch.manual_seed(1234) 
@@ -174,7 +198,7 @@ torch.manual_seed(1234)
 # Need to experiment with number of layers, neurons and time constants.
 net = SynNet(
     neuron_model = LIFExodus,
-   # output="vmem",                         # Use the membrane potential as the output of the network.
+    output="vmem",                       # Use the membrane potential as the output of the network.
     p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
 
     #time constants and threshold are not trainable by default.
@@ -183,7 +207,7 @@ net = SynNet(
     n_channels = net_channels,                        # Number of input channels (always 16)
     n_classes = n_labels,                          # Number of output classes (car, commercial, background noise).
     size_hidden_layers = [24, 24, 24],      # Number of neurons in each hidden layer (taken from tutorial)
-    time_constants_per_layer = [2, 4, 8],   # Number of time constants in each hidden layer (taken from tutorial)
+    time_constants_per_layer = [3, 6, 9],   # Number of time constants in each hidden layer (taken from tutorial)
 ).to(device)
 
 #compile model to make it FAST (doesn't work =( )
@@ -199,13 +223,18 @@ optimiser = Adam(net.parameters().astorch(), lr=1e-3)
 
 #Dylan recommends using MSE for loss
 #results in slightly higher accuracy compared to other functions
-#loss_function = MSELoss()
-loss_function = CrossEntropyLoss()
-'''
-def one_hot_mse_loss(outputs, labels, num_classes):
-    target_onehot = F.one_hot(labels, num_classes=num_classes).float().to(outputs.device)
-    return F.mse_loss(outputs, target_onehot)
-'''
+loss_function = MSELoss()
+#loss_function = CrossEntropyLoss()
+
+# ==== 4. MSE defining ====
+def float_target_mse_loss(outputs, labels, num_classes, pos_val=5.0, neg_val=-1.0):
+    device = outputs.device
+    B = labels.shape[0]
+    target = torch.full((B, num_classes), neg_val, device=device)
+    target[torch.arange(B, device=device), labels] = pos_val
+    return F.mse_loss(outputs, target)
+
+
 #no constraints used
 #no regularisations used
 
@@ -222,8 +251,8 @@ val_acc_list = []
 skip_window = 30
 
 #initialise stat list to empty (for now)
-stats = {"train_acc_list": train_acc_list, "train_loss_list": train_loss_list, "val_acc_list": val_acc_list, "correct": correct, "total": total, "total_loss": total_loss, "best_val_acc": best_val_acc, "total_epochs": total_epochs, "test_acc": None}
-
+stats = {"train_acc_list": train_acc_list, "train_loss_list": train_loss_list, "val_acc_list": val_acc_list, "correct": correct, "total": total, "total_loss": total_loss, "best_val_acc": best_val_acc, "total_epochs": total_epochs, "test_acc": 0}
+best_stat = {"train_acc_list": train_acc_list, "train_loss_list": train_loss_list, "val_acc_list": val_acc_list, "correct": correct, "total": total, "total_loss": total_loss, "best_val_acc": best_val_acc, "total_epochs": total_epochs, "test_acc": 0}
 #in function so we can compile training to make it sonic speed.
 #@torch.compile (doesn't work =( )
 def train(net, train_dl, val_dl, test_dl):
@@ -231,7 +260,7 @@ def train(net, train_dl, val_dl, test_dl):
 
     #Training loop
     #trange gives cool progress bar
-    for _ in trange(100):
+    for _ in trange(n_epochs):
         stats["total_epochs"] += 1
         net.train()
         loss = 0.0
@@ -242,25 +271,21 @@ def train(net, train_dl, val_dl, test_dl):
             #prevent exploding gradients by reseting gradients every loop
             optimiser.zero_grad()
             
-            output, _, _ = net(events)
+            out, _, _ = net(events)
+            output = out[:, skip_window:, :].mean(dim=1) 
+            loss = float_target_mse_loss(output, labels, num_classes=n_labels)
 
-            #sum_out = torch.cumsum(output[:,skip_window:,:], dim=1)[:, -1, :]  # time axis = 1
-            #loss = one_hot_mse_loss(sum_out, labels, num_classes=n_labels)
-
-            sum_out = torch.cumsum(output, dim=1)
-            loss = loss_function(sum_out[:,-1,:], labels)
             
             loss.backward()
             #step must be done after calling backward.
             optimiser.step()
 
-            predicted = torch.argmax(sum_out[:,-1,:], 1)
+            predicted = torch.argmax(output, 1).to(device)
 
             #to get number of datafiles and number of correct guesses
             stats["total"] += labels.size(0)
             stats["correct"] += (predicted == labels).sum().item()
             stats["total_loss"] += loss.item() * events.size(0)
-           # loss += loss.item()
 
         # VAL LOOP
         accuracy_val = -1
@@ -272,12 +297,11 @@ def train(net, train_dl, val_dl, test_dl):
 
             for events, labels in val_dl:
                 events, labels = events.to(device), labels.to(device)
-                output, _, _ = net(events)
+                out, _, _ = net(events)
 
-                #sum_out = torch.cumsum(output[:,skip_window:,:], dim=1)[:, -1, :]  # time axis = 1
-                sum_out = torch.cumsum(output, dim=1)
+                output = out[:, skip_window:, :].mean(dim=1)  # using skip and mean value vmem
 
-                predicted = torch.argmax(sum_out[:,-1,:], 1)
+                predicted = torch.argmax(output, 1).to(device)
                 val_total += labels.size(0)
                 val_correct += (predicted == labels).sum().item()
 
@@ -304,6 +328,10 @@ def train(net, train_dl, val_dl, test_dl):
         print(f'Epoch {stats["total_epochs"]}: Loss {avg_loss:.4f}, Training Accuracy {accuracy:.2f}%, Val Accuracy {accuracy_val:.2f}%')
 
 
+    #load best model found
+    net.load(model_file_name)
+    net.to(device)
+
     # TEST LOOP (after training)
     with torch.no_grad():
         correct = 0
@@ -311,15 +339,26 @@ def train(net, train_dl, val_dl, test_dl):
 
         for events, labels in test_dl:
             events, labels = events.to(device), labels.to(device)
-            output, _, _ = net(torch.Tensor(events).float())
+            output, _, _ = net(events)
 
-            sum = torch.cumsum(output, dim=1)
+            out = output[:, skip_window:, :].mean(dim=1)  # using skip and mean value vmem
 
-            predicted = torch.argmax(sum[:,-1,:], 1)
+            predicted = torch.argmax(out, 1).to(device)
+
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
         accuracy_test = (correct/total)*100
+        stats['test_acc'] = accuracy_test
+
+        if (stats['test_acc'] > best_stat["test_acc"]):
+            with open(bestStat_file_name, "w", encoding="utf-8") as stat_file:
+                json.dump(stats, stat_file, indent=4) #indent makes json pretty
+                # save model
+                net.save(bestModel_file_name)
+                print("💾 Record breaking model saved!")
+
+             
 
     print(f"Test Accuracy: {accuracy_test:.3f}%")
 
@@ -328,6 +367,8 @@ def train(net, train_dl, val_dl, test_dl):
 #%%
 stat_file_name = "New_Stats.json"
 model_file_name = "New_Model.json"
+bestStat_file_name = "Best_Stats.json"
+bestModel_file_name = "Best_Model.json"
 #%%
 #load model if save exists.
 if os.path.exists(os.path.join(dir, model_file_name)):
@@ -337,6 +378,10 @@ if os.path.exists(os.path.join(dir, model_file_name)):
 if os.path.exists(os.path.join(dir, stat_file_name)):
     with open(stat_file_name, "r", encoding="utf-8") as stat_file:
         stats = json.load(stat_file)
+#load best stats if save exists
+if os.path.exists(os.path.join(dir, bestStat_file_name)):
+    with open(bestStat_file_name, "r", encoding="utf-8") as stat_file:
+        best_stat = json.load(stat_file)
 
 trainModel = True
 
