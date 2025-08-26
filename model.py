@@ -38,8 +38,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 2000
-n_batches = 8
+n_epochs = 1000
+n_batches = 256
 n_time = 100
 n_labels = 3
 net_channels = 16
@@ -71,12 +71,11 @@ dataloader_val_kwargs = dict(
 
 dir = os.path.dirname(os.path.abspath('__file__'))
 base_dir = os.path.join(dir, "DataPreprocessing", "new_npy")
+
 '''
 train_path = os.path.join(base_dir, "Train")
 test_path = os.path.join(base_dir, "Test")
 val_path = os.path.join(base_dir, "Val")
-
-
 
 
 #if files can be found
@@ -135,27 +134,12 @@ disk_val_dataset = tonic.DiskCachedDataset(
   )
 
 
-#probably don't need to cache test data lol
-disk_test_dataset = tonic.DiskCachedDataset(
-    dataset=test_data,
-    # transform = torch.Tensor,lambda x: torch.tensor(x).to_sparse(),
-    cache_path=f"cache/{test_data.__class__.__name__}/test/{net_channels}/",
-    # target_transform=lambda x: torch.tensor(x),
-    reset_cache = True,
-  )
-
 train_dl = DataLoader(disk_train_dataset, **dataloader_kwargs)
 val_dl = DataLoader(disk_val_dataset, **dataloader_kwargs)
 test_dl = DataLoader(disk_test_dataset, **dataloader_kwargs)
 
-
-train_dl = DataLoader(training_data, **dataloader_kwargs)
-val_dl = DataLoader(val_data, **dataloader_kwargs)
-test_dl = DataLoader(test_data, **dataloader_kwargs)
-
-
 '''
-mingDataPath = os.path.join(dir, "DataPreprocessing", "delete_npy")
+mingDataPath = os.path.join(dir, "DataPreprocessing", "CustomDataset")
 
 #CUDA results in x5 speed increase.
 #ming data results in x6 speed increase.
@@ -167,12 +151,6 @@ y_val = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_val.npy"))).long(
 X_test = torch.from_numpy(np.load(os.path.join(mingDataPath, "X_test.npy"))).float()
 y_test = torch.from_numpy(np.load(os.path.join(mingDataPath, "y_test.npy"))).long()
 
-print(X_train.shape)
-print(y_train.shape)
-print(X_val.shape)
-print(y_val.shape)
-
-'''
 train_ds = TensorDataset(X_train, y_train)
 val_ds = TensorDataset(X_val, y_val)
 test_ds = TensorDataset(X_test, y_test)
@@ -181,16 +159,12 @@ test_ds = TensorDataset(X_test, y_test)
 train_dl = DataLoader(train_ds, **dataloader_kwargs)
 val_dl = DataLoader(val_ds, **dataloader_val_kwargs)
 test_dl = DataLoader(test_ds, **dataloader_val_kwargs)
+
 '''
-
-train_ds = TensorDataset(X_train, y_train)
-val_ds = TensorDataset(X_val, y_val)
-test_ds = TensorDataset(X_test, y_test)
-
 train_dl = DataLoader(train_ds, batch_size=n_batches, shuffle=True, drop_last=True, pin_memory=True, num_workers=6)
 val_dl = DataLoader(val_ds, batch_size=n_batches, shuffle=False, drop_last=False, pin_memory=True, num_workers=6)
 test_dl = DataLoader(test_ds, batch_size=n_batches, shuffle=False, drop_last=False, pin_memory=True, num_workers=6)
-
+'''
 # A manual seed ensures repeatability
 torch.manual_seed(1234) 
 
