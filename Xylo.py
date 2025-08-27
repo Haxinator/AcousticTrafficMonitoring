@@ -73,7 +73,8 @@ net = SynNet(
     time_constants_per_layer = [2, 4, 8],   # Number of time constants in each hidden layer (taken from tutorial)
 )
 
-net.load("New_Model.json")
+#load the best model
+net.load("Best_Model.json")
 
 spec = None
 
