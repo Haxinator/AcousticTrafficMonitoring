@@ -38,7 +38,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 1
+n_epochs = 2000
 n_batches = 256
 n_time = 100
 n_labels = 3
@@ -340,7 +340,7 @@ def train(net, train_dl, val_dl, test_dl):
 # ---------------- Program Start---------------------#
 #%%
 stat_file_name = "New_Stats.json"
-model_file_name = "Best_Model.json"
+model_file_name = "New_Model.json"
 bestStat_file_name = "Best_Stats.json"
 bestModel_file_name = "Best_Model.json"
 #%%

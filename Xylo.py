@@ -30,7 +30,7 @@ import numpy as np
 plt.rcParams['figure.figsize'] = [12, 4]
 plt.rcParams['figure.dpi'] = 300
 
-xylo_board_name = 'XyloAudio3'
+xylo_board_name = 'XyloAudio2'
 
 # - Imports dependent on your HDK
 # - XyloAudio 2
@@ -62,7 +62,7 @@ dt = 1e-3
 net = SynNet(
     # neuron_model = LIFExodus,
    # output="vmem",                         # Use the membrane potential as the output of the network.
-    p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
+    p_dropout=0.2,                         # probability of dropout (good to prevent overfitting).
 
     #time constants and threshold are not trainable by default.
     #NOTE if not using SynNet then they will be by default.
@@ -90,6 +90,7 @@ elif xylo_board_name == 'XyloAudio3':
 # spec.update(q.global_quantize(**spec))
 
 # you can also try channel-wise quantization
+unquantised_spec = spec.copy()
 spec.update(q.channel_quantize(**spec))
 # print(spec)
 
@@ -139,7 +140,7 @@ if hdk is None:
 
 # - Evolve the network on the Xylo HDK
 # - `reset_state` is only needed for XyloAudio 2
-if xylo_board_name == 'XyloAudio2':
+if xylo_board_name == 'XyloAudio2' and modSamna:
     modSamna.reset_state()
 
 # ---------- Generate some Poisson input (for testing)-------------------#
@@ -188,6 +189,7 @@ if modMonitor:
     samples = []
 
 fignum = 0
+power = -1
 
 for sample in samples:
     fignum = fignum + 1
@@ -197,9 +199,9 @@ for sample in samples:
             # - Perform inference on the Xylo board
             # - The following line will evolve XyloMonitor for T time steps.
             # - Keep in mind that this mode is using the microphone as input, hence the output might change according to the ambience noise
-            output, _, r_d = modMonitor(input_data=np.zeros((T, net_in_channels)))
+            output, _, r_d = modMonitor(input_data=np.zeros((T, net_in_channels)), record_power = True)
         else:
-            output, _, r_d = modSamna(sample, record = True)
+            output, _, r_d = modSamna(sample, record = True, record_power = True)
     else:
         output, _, r_d = modSim(sample, record = True)
 
@@ -209,6 +211,19 @@ for sample in samples:
 
     print(prediction)
     list_of_detected_cars.append(prediction)
+
+    
+    # out_old, _, _ = net(torch.from_numpy(sample))
+
+    # out_old = out_old[:, 30:, :].mean(dim=1)  # using skip and mean value vmem
+
+    # floatingmodel_prediction = torch.argmax(out_old, 1)
+    # print(floatingmodel_prediction)
+
+    if modMonitor or modSamna:
+        # Measure power in Watts
+        power = np.sum(r_d['io_power']) + np.sum(r_d['analog_power']) + np.sum(r_d['digital_power'])
+        print(f"Power Consumption: {power}")
 
     #----------------SEND DATA TO FRONTEND----------------#
     # To run the backend, type "uvicorn main:app --reload --port 3000" in the terminal
@@ -243,6 +258,38 @@ for sample in samples:
         TSContinuous.from_clocked(r_d['Vmem'], dt, name = 'Hidden membrane potentials').plot(stagger = 127)
     plt.savefig(os.path.join('plots', f'MembranePotential{fignum}.png'))
     print('Figures Saved')
+
+    #---- PLOT QUANTISATION---------------------------#
+    fig = plt.figure(figsize=(16, 10))
+    ax = fig.add_subplot(321)
+    ax.set_title("w_inp float")
+    ax.hist(np.ravel(unquantised_spec["weights_in"][unquantised_spec["weights_in"] != 0]), bins=2**8)
+
+    ax = fig.add_subplot(322)
+    ax.set_title("w_inp quant")
+    ax.hist(np.ravel(spec["weights_in"][spec["weights_in"] != 0]), bins=2**8)
+
+    ax = fig.add_subplot(323)
+    ax.set_title("w_rec float")
+    ax.hist(np.ravel(unquantised_spec["weights_rec"][unquantised_spec["weights_rec"] != 0]), bins=2**8)
+
+    ax = fig.add_subplot(324)
+    ax.set_title("w_rec quant")
+    ax.hist(
+        np.ravel(spec["weights_rec"][spec["weights_rec"] != 0]), bins=2**8
+    )
+
+    ax = fig.add_subplot(325)
+    ax.set_title("w_out float")
+    ax.hist(np.ravel(unquantised_spec["weights_out"][unquantised_spec["weights_out"] != 0]), bins=2**8)
+
+    ax = fig.add_subplot(326)
+    ax.set_title("w_out quant")
+    ax.hist(
+        np.ravel(spec["weights_out"][spec["weights_out"] != 0]), bins=2**8
+    )
+
+    plt.savefig(os.path.join('plots', f'QuantisationComparison.png'))
 
 # free memory just in case
 if hdk is None:
