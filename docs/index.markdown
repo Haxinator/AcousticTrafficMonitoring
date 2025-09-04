@@ -45,6 +45,133 @@ Here are some project constraints:
 4. The system must use an acoustic-based traffic monitoring system to classify vehicles.
 
 ## Technical Part
+### 1. Environment Setup (Python & Rockpool)
 
+- Python version should be between 3.8 and 3.11.
+
+```bash
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.10
+sudo apt install python3.10-venv
+python3.10 -m venv <myenvpath>
+```
+
+Activate the virtual environment:
+
+```bash
+source <myenvpath>/bin/activate
+pip install -r requirements.txt
+```
+
+---
+
+### 2. Data Preprocessing
+
+- ~~Download [DCASE2024 Acoustic Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring)~~ (This was used as our training dataset, however, ths quality of the dataset is not satisfying. As a result, we switch to the new dataset)
+- Download [IDMT-TRAFFIC - Fraunhofer IDMT](https://www.idmt.fraunhofer.de/en/publications/datasets/traffic.html)
+- Place `loc*` directories into `Datapreprocessing/`
+- Run the following notebooks:
+  - `data_preprocessing.ipynb`: to extract segments
+  - `spike_test.ipynb`: to convert audio into spike signals
+
+**Note:** This process may take 1–2 days.
+
+---
+
+### 3. Training the Spiking Neural Network Model
+
+- Requirements:
+  - NVIDIA GPU
+  - CUDA toolkit
+
+```bash
+pip install "rockpool[sinabs, exodus]"
+```
+
+Run the model:
+
+```bash
+source venv/bin/activate
+python3 model.py
+```
+
+Reduce `epochs` to shorten training time (may reduce accuracy).
+
+---
+
+### 4. Running the Backend (FastAPI)
+
+Ensure dependencies installed: FastAPI, Rockpool, OS, numpy, matplotlib
+
+```bash
+uvicorn main:app --reload --port 3000
+```
+
+---
+
+### 5. Running the Frontend (React + Tailwind)
+
+Make sure Node.js and npm are installed.
+
+```bash
+cd FrontEnd/traffic-ui
+npm install
+npm audit fix --force
+npm start
+```
+
+Visit the IP address shown in terminal (usually http://localhost:3000).
+
+---
+
+### 6. Blog Site Deployment
+
+- Blog: [https://haxinator.github.io/AcousticTrafficMonitoring/](https://haxinator.github.io/AcousticTrafficMonitoring/)
+- Edit markdown files in `docs/`
+- Install [Jekyll](https://jekyllrb.com/docs/installation/) to preview locally
+
+---
+
+### 7. Rockpool Overview
+
+Rockpool is a simulation and deployment framework for SNNs:
+
+- Define neurons with `Rate`, `LIF`, etc.
+- Inspect states:
+
+```python
+print(mod.state())
+print(mod.parameters())
+print(mod.simulation_parameters())
+```
+
+---
+
+### 8. Xylo Audio Hardware
+
+- Analog front-end for ultra-low-power audio
+- Real-time inference
+- Spiking neural network optimized
+
+[Xylo deployment quickstart](https://rockpool.ai/devices/quick-xylo/deploy_to_xylo.html)
+
+---
+
+### 9. Optional: Installing Rockpool
+
+```bash
+python3 -m venv ./venv
+source venv/bin/activate
+pip install rockpool
+```
+
+or with conda:
+
+```bash
+conda create -n rockpool-env python=3.8
+conda activate rockpool-env
+conda install -c conda-forge rockpool
+```
 
 ## The process of the research and development
