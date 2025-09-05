@@ -5,6 +5,7 @@ from rockpool.nn.modules import LIFExodus
 from rockpool.transform import quantize_methods as q
 from rockpool import TSEvent, TSContinuous
 from rockpool.devices.xylo import find_xylo_hdks
+from rockpool.nn.modules import LIFTorch
 
 # Use fastapi to connect with the frontend
 from fastapi import FastAPI
@@ -30,7 +31,7 @@ import numpy as np
 plt.rcParams['figure.figsize'] = [12, 4]
 plt.rcParams['figure.dpi'] = 300
 
-xylo_board_name = 'XyloAudio2'
+xylo_board_name = 'XyloAudio3'
 
 # - Imports dependent on your HDK
 # - XyloAudio 2
@@ -75,7 +76,7 @@ net = SynNet(
 
 #load the best model
 net.load("Best_Model.json")
-
+net.seq.out_neurons = LIFTorch([3,3], threshold = [3.,4.,5.])
 spec = None
 
 # - Call the Xylo mapper on the extracted computational graph
