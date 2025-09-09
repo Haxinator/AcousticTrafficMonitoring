@@ -223,8 +223,12 @@ for sample in samples:
 
     if modMonitor or modSamna:
         # Measure power in Watts
-        power = np.sum(r_d['io_power']) + np.sum(r_d['analog_power']) + np.sum(r_d['digital_power'])
-        print(f"Power Consumption: {power}")
+        if xylo_board_name == 'XyloAudio3':
+            power = np.mean(r_d['io_power']) + np.mean(r_d['analog_power']) + np.mean(r_d['digital_power'])
+            print(f"Total Power Consumption: {power * 1e6:.0f} µW")
+        if xylo_board_name == 'XyloAudio2':
+            power = np.mean(r_d['io_power']) + np.mean(r_d['afe_core_power']) + np.mean(r_d['afe_ldo_power']) + np.mean('snn_core_power')
+            print(f"Total Power Consumption: {power * 1e6:.0f} µW")
 
     #----------------SEND DATA TO FRONTEND----------------#
     # To run the backend, type "uvicorn main:app --reload --port 3000" in the terminal
