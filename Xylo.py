@@ -241,6 +241,11 @@ for sample in samples:
     def get_last_car():
         return {"lastCar": targetVar}
 
+
+    @app.get("/api/power")
+    def get_power():
+        return {"power": power}
+
     #---------------------PLOT OUTPUT-------------------#
     # - Plot some internal state variables
     plt.figure()
