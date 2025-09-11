@@ -25,36 +25,50 @@ const TrafficMonitorUI = () => {
   ];
 
   // -------------------- Fetching data from Backend-------------------------
+  // useEffect(() => {
+  //   const fetchLastCar = async () => {
+  //     try {
+  //       const res = await fetch("http://localhost:3000/api/lastcar");
+  //       const data = await res.json();
+  //       setLastCar(data.lastCar);
+  //     } catch (err) {
+  //       console.error("Failed to fetch lastCar:", err);
+  //     }
+  //   };
+  //   const fetchPower = async () => {
+  //   try {
+  //       const res = await fetch("http://localhost:3000/api/power");
+  //       const data = await res.json();
+  //       setPower(data.power);
+  //     } catch (err) {
+  //       console.error("Failed to fetch power:", err);
+  //     }
+  //   };
+
+  //   fetchLastCar();
+  //   fetchPower();
+
+  //   // Control the refresh rate of fetching data
+  //   const interval = setInterval(() => {
+  //     fetchLastCar();
+  //     fetchPower();
+  //   }, 1000); // Refresh every 1 second
+  //   return () => clearInterval(interval);
+  // }, []);
+
   useEffect(() => {
-    const fetchLastCar = async () => {
-      try {
-        const res = await fetch("http://localhost:3000/api/lastcar");
-        const data = await res.json();
-        setLastCar(data.lastCar);
-      } catch (err) {
-        console.error("Failed to fetch lastCar:", err);
-      }
+    const ws = new WebSocket("ws://localhost:3000/ws");
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setLastCar(data.lastCar);
+      setPower(data.power);
     };
-    const fetchPower = async () => {
-    try {
-        const res = await fetch("http://localhost:3000/api/power");
-        const data = await res.json();
-        setPower(data.power);
-      } catch (err) {
-        console.error("Failed to fetch power:", err);
-      }
-    };
-
-    fetchLastCar();
-    fetchPower();
-
-    // Control the refresh rate of fetching data
-    const interval = setInterval(() => {
-      fetchLastCar();
-      fetchPower();
-    }, 1000); // Refresh every 1 second
-    return () => clearInterval(interval);
+    ws.onopen = () => console.log("WebSocket connected");
+    ws.onclose = () => console.log("WebSocket disconnected");
+    
+    return () => ws.close();
   }, []);
+
   // ------------------------------------------------------------------------
 
   return (

@@ -113,7 +113,7 @@ Make sure FastAPI, Rockpool, OS, numpy and matplotlib are installed.
 
 Instead of simply running Xylo.py directly with "Run" button,
 
-Please run ```uvicorn main:app --reload --port 3000``` in the Root directory.
+Please run ```uvicorn Xylo:app --reload --port 3000``` in the Root directory.
 
 ### Running the Front end
 Please run the front end after launched back end.
