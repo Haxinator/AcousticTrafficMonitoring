@@ -35,10 +35,24 @@ const TrafficMonitorUI = () => {
         console.error("Failed to fetch lastCar:", err);
       }
     };
+    const fetchPower = async () => {
+    try {
+        const res = await fetch("http://localhost:3000/api/power");
+        const data = await res.json();
+        setPower(data.power);
+      } catch (err) {
+        console.error("Failed to fetch power:", err);
+      }
+    };
+
     fetchLastCar();
+    fetchPower();
 
     // Control the refresh rate of fetching data
-    const interval = setInterval(fetchLastCar, 1000);
+    const interval = setInterval(() => {
+      fetchLastCar();
+      fetchPower();
+    }, 1000); // Refresh every 1 second
     return () => clearInterval(interval);
   }, []);
   // ------------------------------------------------------------------------
