@@ -78,7 +78,7 @@ data_path = os.path.join(current_dir, "DataPreprocessing")
 os.makedirs("plots", exist_ok=True)
 os.makedirs("vmem_calibration", exist_ok=True)
 
-# ----------------------------------- Thresholding and Analysis ------------------------------
+# # ----------------------------------- Thresholding and Analysis ------------------------------
 vmem_net = SynNet(
     neuron_model=LIFTorch,
     output="vmem",
@@ -109,147 +109,149 @@ except FileNotFoundError:
 val_ds = TensorDataset(X_val, y_val)
 val_dl = DataLoader(val_ds, batch_size=n_batches, shuffle=False)
 
-# -------------------- Collect Vmems ------------------------
-vmem_file = os.path.join("vmem_calibration", "all_vmems.npy")
-labels_file = os.path.join("vmem_calibration", "all_labels.npy")
-all_vmems = []
-all_labels = []
+# # -------------------- Collect Vmems ------------------------
+# vmem_file = os.path.join("vmem_calibration", "all_vmems.npy")
+# labels_file = os.path.join("vmem_calibration", "all_labels.npy")
+# all_vmems = []
+# all_labels = []
 
-if os.path.exists(vmem_file) and os.path.exists(labels_file):
-    print("Found existing Vmems and labels. Loading from file...")
-    all_vmems = np.load(vmem_file)
-    all_labels = np.load(labels_file)
-else:
-    print("No saved Vmems found. Running network to collect Vmems...")
-    all_vmems = []
-    all_labels = []
-    with torch.no_grad():
-        for events, labels in val_dl:
-            events, labels = events.to(device), labels.to(device)
-            out, _, _ = vmem_net(events)
-            output_vmems = out[:, skip_window:, :].mean(dim=1)
-            all_vmems.append(output_vmems.cpu().numpy())
-            all_labels.append(labels.cpu().numpy())
+# if os.path.exists(vmem_file) and os.path.exists(labels_file):
+#     print("Found existing Vmems and labels. Loading from file...")
+#     all_vmems = np.load(vmem_file)
+#     all_labels = np.load(labels_file)
+# else:
+#     print("No saved Vmems found. Running network to collect Vmems...")
+#     all_vmems = []
+#     all_labels = []
+#     with torch.no_grad():
+#         for events, labels in val_dl:
+#             events, labels = events.to(device), labels.to(device)
+#             out, _, _ = vmem_net(events)
+#             output_vmems = out[:, skip_window:, :].mean(dim=1)
+#             all_vmems.append(output_vmems.cpu().numpy())
+#             all_labels.append(labels.cpu().numpy())
 
-    all_vmems = np.concatenate(all_vmems, axis=0)
-    all_labels = np.concatenate(all_labels, axis=0)
-    print("----- Vmem collection complete ------")
-    print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
+#     all_vmems = np.concatenate(all_vmems, axis=0)
+#     all_labels = np.concatenate(all_labels, axis=0)
+#     print("----- Vmem collection complete ------")
+#     print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
 
-    np.save(vmem_file, all_vmems)
-    np.save(labels_file, all_labels)
+#     np.save(vmem_file, all_vmems)
+#     np.save(labels_file, all_labels)
 
-# -------------------- Vmem Range Analysis -------------------
-lowest_vmem = np.min(all_vmems)
-highest_vmem = np.max(all_vmems)
-print(f"Lowest Vmem recorded: {lowest_vmem:.4f}")
-print(f"Highest Vmem recorded: {highest_vmem:.4f}")
+# # -------------------- Vmem Range Analysis -------------------
+# lowest_vmem = np.min(all_vmems)
+# highest_vmem = np.max(all_vmems)
+# print(f"Lowest Vmem recorded: {lowest_vmem:.4f}")
+# print(f"Highest Vmem recorded: {highest_vmem:.4f}")
 
-# ------------------- Automated Grid-Search Thresholding -------------------
-print("Starting automated grid search for optimal thresholds...")
+# # ------------------- Automated Grid-Search Thresholding -------------------
+# print("Starting automated grid search for optimal thresholds...")
 
-threshold_ranges = {
-    0: np.arange(-5.0, 10.0, 0.5),   # Car
-    1: np.arange(-5.0, 10.0, 0.5),   # Commercial
-    2: np.arange(-5.0, 10.0, 0.5),   # Background
-}
+# threshold_ranges = {
+#     0: np.arange(-5.0, 10.0, 0.5),   # Car
+#     1: np.arange(-5.0, 10.0, 0.5),   # Commercial
+#     2: np.arange(-5.0, 10.0, 0.5),   # Background
+# }
 
-best_macro_f1 = -1
-grid_search_thresholds = None
+# best_macro_f1 = -1
+# grid_search_thresholds = None
 
-all_threshold_combinations = list(itertools.product(
-    threshold_ranges[0],
-    threshold_ranges[1],
-    threshold_ranges[2]
-))
+# all_threshold_combinations = list(itertools.product(
+#     threshold_ranges[0],
+#     threshold_ranges[1],
+#     threshold_ranges[2]
+# ))
 
-for tset in all_threshold_combinations:
-    spikes = (all_vmems >= tset).astype(int)
-    preds = np.argmax(spikes, axis=1)
+# for tset in all_threshold_combinations:
+#     spikes = (all_vmems >= tset).astype(int)
+#     preds = np.argmax(spikes, axis=1)
 
-    acc = accuracy_score(all_labels, preds)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        all_labels, preds, average=None, zero_division=0
-    )
-    macro_f1 = np.mean(f1)
+#     acc = accuracy_score(all_labels, preds)
+#     precision, recall, f1, _ = precision_recall_fscore_support(
+#         all_labels, preds, average=None, zero_division=0
+#     )
+#     macro_f1 = np.mean(f1)
 
-    if macro_f1 > best_macro_f1:
-        best_macro_f1 = macro_f1
-        grid_search_thresholds = tset
-# ------------------- Iterative Threshold Adjustment -------------------
-print("Starting iterative threshold adjustment...")
+#     if macro_f1 > best_macro_f1:
+#         best_macro_f1 = macro_f1
+#         grid_search_thresholds = tset
+# # ------------------- Iterative Threshold Adjustment -------------------
+# print("Starting iterative threshold adjustment...")
 
-thresholds = np.zeros(n_labels)  # [0.0, 0.0, 0.0]
-step_size = 0.1
-max_iterations = 100
-tol = 1e-4
+# thresholds = np.zeros(n_labels)  # [0.0, 0.0, 0.0]
+# step_size = 0.1
+# max_iterations = 100
+# tol = 1e-4
 
-best_macro_f1 = -1
-interative_thresholds = thresholds.copy()
+# best_macro_f1 = -1
+# interative_thresholds = thresholds.copy()
 
-for it in range(max_iterations):
-    improved = False
-    for idx in range(n_labels):
-        for delta in [-step_size, step_size]:
-            temp_thresholds = thresholds.copy()
-            temp_thresholds[idx] += delta
+# for it in range(max_iterations):
+#     improved = False
+#     for idx in range(n_labels):
+#         for delta in [-step_size, step_size]:
+#             temp_thresholds = thresholds.copy()
+#             temp_thresholds[idx] += delta
 
-            spikes = (all_vmems >= temp_thresholds).astype(int)
-            preds = np.argmax(spikes, axis=1)
+#             spikes = (all_vmems >= temp_thresholds).astype(int)
+#             preds = np.argmax(spikes, axis=1)
 
-            _, _, f1, _ = precision_recall_fscore_support(
-                all_labels, preds, average=None, zero_division=0
-            )
-            macro_f1 = np.mean(f1)
+#             _, _, f1, _ = precision_recall_fscore_support(
+#                 all_labels, preds, average=None, zero_division=0
+#             )
+#             macro_f1 = np.mean(f1)
 
-            if macro_f1 > best_macro_f1 + tol:
-                best_macro_f1 = macro_f1
-                interative_thresholds = temp_thresholds.copy()
-                improved = True
+#             if macro_f1 > best_macro_f1 + tol:
+#                 best_macro_f1 = macro_f1
+#                 interative_thresholds = temp_thresholds.copy()
+#                 improved = True
 
-    if not improved:
-        break
-    thresholds = interative_thresholds .copy()
-# ------------------- Manual Threshold Comparison -------------------
-print("Starting manual threshold comparison...")
+#     if not improved:
+#         break
+#     thresholds = interative_thresholds .copy()
+# # ------------------- Manual Threshold Comparison -------------------
+# print("Starting manual threshold comparison...")
 
-best_macro_f1_manual = -1
-opt_thresholds = None
+# best_macro_f1_manual = -1
+# opt_thresholds = None
 
-# Define the threshold sets you want to test
-manual_thresholds_to_test = [
-    [0.1, 0.2, 0.0],
-    [-1.0, 6.0, 4.0],
-    [1.0, 1.0, 1.0],
-    [3.0, 4.0, 5.0],
-    grid_search_thresholds,
-    interative_thresholds,
-]
+# # Define the threshold sets you want to test
+# manual_thresholds_to_test = [
+#     [0.1, 0.2, 0.0],
+#     [-1.0, 6.0, 4.0],
+#     [1.0, 1.0, 1.0],
+#     [3.0, 4.0, 5.0],
+#     grid_search_thresholds,
+#     interative_thresholds,
+# ]
 
-for idx, tset in enumerate(manual_thresholds_to_test):
-    print(f"\n----- Evaluating Threshold Set {idx+1}: {tset} -----")
+# for idx, tset in enumerate(manual_thresholds_to_test):
+#     print(f"\n----- Evaluating Threshold Set {idx+1}: {tset} -----")
 
-    spikes = (all_vmems >= tset).astype(int)
-    preds = np.argmax(spikes, axis=1)
+#     spikes = (all_vmems >= tset).astype(int)
+#     preds = np.argmax(spikes, axis=1)
 
-    acc = accuracy_score(all_labels, preds)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        all_labels, preds, average=None, zero_division=0
-    )
-    macro_f1 = np.mean(f1)
-    conf_matrix = confusion_matrix(all_labels, preds)
+#     acc = accuracy_score(all_labels, preds)
+#     precision, recall, f1, _ = precision_recall_fscore_support(
+#         all_labels, preds, average=None, zero_division=0
+#     )
+#     macro_f1 = np.mean(f1)
+#     conf_matrix = confusion_matrix(all_labels, preds)
 
-    print(f"Macro F1: {macro_f1:.4f}")
-    print(f"Accuracy: {acc:.4f}")
-    for c_idx, cname in enumerate(class_names):
-        print(
-            f"{cname}: Precision={precision[c_idx]:.3f}, Recall={recall[c_idx]:.3f}, F1={f1[c_idx]:.3f}")
-    print("Confusion Matrix:")
-    print(conf_matrix)
+#     print(f"Macro F1: {macro_f1:.4f}")
+#     print(f"Accuracy: {acc:.4f}")
+#     for c_idx, cname in enumerate(class_names):
+#         print(
+#             f"{cname}: Precision={precision[c_idx]:.3f}, Recall={recall[c_idx]:.3f}, F1={f1[c_idx]:.3f}")
+#     print("Confusion Matrix:")
+#     print(conf_matrix)
 
-    if macro_f1 > best_macro_f1_manual:
-        best_macro_f1_manual = macro_f1
-        opt_thresholds = tset
+#     if macro_f1 > best_macro_f1_manual:
+#         best_macro_f1_manual = macro_f1
+#         opt_thresholds = tset
+
+opt_thresholds = (np.float64(0.5), np.float64(1.0), np.float64(-5.0))
 
 print(
     f"\nSelected optimal thresholds based on manual comparison: {opt_thresholds}")
@@ -408,8 +410,8 @@ async def websocket_endpoint(ws: WebSocket):
     # To run the backend, type "uvicorn main:app --reload --port 3000" in the terminal
 
     # Global state (accessible by API)
-    # current_last_car = "None"
-    # current_power = 0
+    current_last_car = "None"
+    current_power = 0
 
     # # Create API
     # @app.get("/api/lastcar")
@@ -423,7 +425,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     # -----------------------RUN--------------------------#
     # need to add microphone stuff here when actually running in free-inference (input from mic)
-    freeInferenceMode = False
+    freeInferenceMode = True
     modMonitor = None
 
     if freeInferenceMode:
@@ -451,7 +453,8 @@ async def websocket_endpoint(ws: WebSocket):
 
     if modMonitor:
         # loop once only
-        samples = []
+        samples = range(100)
+        T = 1000 # one second of recording then output result
 
 
 
@@ -468,6 +471,7 @@ async def websocket_endpoint(ws: WebSocket):
                 # - Perform inference on the Xylo board
                 # - The following line will evolve XyloMonitor for T time steps.
                 # - Keep in mind that this mode is using the microphone as input, hence the output might change according to the ambience noise
+                modMonitor.reset_state()
                 output, _, r_d = modMonitor(input_data=np.zeros(
                     (T, net_in_channels)), record_power=True)
             else:
@@ -492,8 +496,11 @@ async def websocket_endpoint(ws: WebSocket):
         if modMonitor or modSamna:
             # Measure power in Watts
             if xylo_board_name == 'XyloAudio3':
-                power = np.mean(
-                    r_d['io_power']) + np.mean(r_d['analog_power']) + np.mean(r_d['digital_power'])
+                if 'io_power' in r_d.keys() and len(r_d['io_power'])>0:
+                    power = np.mean(
+                        r_d['io_power']) + np.mean(r_d['analog_power']) + np.mean(r_d['digital_power'])
+                else:
+                    power = 0.
                 print(f"Total Power Consumption: {power * 1e6:.0f} µW")
             if xylo_board_name == 'XyloAudio2':
                 power = np.mean(r_d['io_power']) + np.mean(r_d['afe_core_power']) + \
