@@ -8,10 +8,9 @@ const TrafficMonitorUI = () => {
   // Dummy datas for presenting, need to replace them with actual data from Backend
   const [lastCar, setLastCar] = useState(null);
   const [power, setPower] = useState(80);
-
-  const totalCommercial = 8;
-  const totalNormal = 12;
-  const totalVehicles = totalCommercial + totalNormal;
+  const [totalCommercial, setTotalCommercial] = useState(8);
+  const [totalNormal, setTotalNormal] = useState(12);
+  const [totalVehicles, setTotalVehicles] = useState(20);
 
   const powerData = [
     { time: '10s', power: 60 }, { time: '20s', power: 75 }, { time: '30s', power: 80 },
@@ -57,16 +56,24 @@ const TrafficMonitorUI = () => {
   // }, []);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:3000/ws");
+    const ws = new WebSocket("ws://localhost:3001/ws");
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       setLastCar(data.lastCar);
       setPower(data.power);
+      setTotalNormal(data.totalNormal);
+      setTotalCommercial(data.totalCommercial);
+      setTotalVehicles(data.totalVehicles);
     };
     ws.onopen = () => console.log("WebSocket connected");
     ws.onclose = () => console.log("WebSocket disconnected");
+    ws.onerror = (error) => console.error("WebSocket error:", error);
     
-    return () => ws.close();
+    return () => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.close();
+    }
+  };
   }, []);
 
   // ------------------------------------------------------------------------
