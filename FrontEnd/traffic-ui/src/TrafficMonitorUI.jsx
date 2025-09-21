@@ -12,16 +12,8 @@ const TrafficMonitorUI = () => {
   const [totalNormal, setTotalNormal] = useState(12);
   const [totalVehicles, setTotalVehicles] = useState(20);
 
-  const powerData = [
-    { time: '10s', power: 60 }, { time: '20s', power: 75 }, { time: '30s', power: 80 },
-    { time: '40s', power: 78 }, { time: '50s', power: 70 }, { time: '60s', power: 65 }
-  ];
-
-  const carsData = [
-    { time: '10s', normal: 5, commercial: 3 }, { time: '20s', normal: 7, commercial: 4 },
-    { time: '30s', normal: 9, commercial: 6 }, { time: '40s', normal: 9, commercial: 5 },
-    { time: '50s', normal: 8, commercial: 4 }, { time: '60s', normal: 7, commercial: 4 }
-  ];
+  const [historicalPower, setHistoricalPower] = useState([]);
+  const [historicalCars, setHistoricalCars] = useState([]);
 
   // -------------------- Fetching data from Backend-------------------------
   // useEffect(() => {
@@ -57,6 +49,7 @@ const TrafficMonitorUI = () => {
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3001/ws");
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       setLastCar(data.lastCar);
@@ -64,17 +57,40 @@ const TrafficMonitorUI = () => {
       setTotalNormal(data.totalNormal);
       setTotalCommercial(data.totalCommercial);
       setTotalVehicles(data.totalVehicles);
+
+      // Update historical data and keep only the last 60 seconds
+      setHistoricalPower(prevData => {
+        const newData = [...prevData, { power: data.power }];
+        return newData.slice(Math.max(newData.length - 60, 0));
+      });
+
+      setHistoricalCars(prevData => {
+        const newData = [...prevData, { normal: data.totalNormal, commercial: data.totalCommercial }];
+        return newData.slice(Math.max(newData.length - 60, 0));
+      });
     };
+
     ws.onopen = () => console.log("WebSocket connected");
     ws.onclose = () => console.log("WebSocket disconnected");
     ws.onerror = (error) => console.error("WebSocket error:", error);
-    
+
     return () => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.close();
-    }
-  };
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
   }, []);
+
+  const formattedPowerData = historicalPower.map((point, index) => ({
+    time: `${historicalPower.length - index}s`,
+    power: point.power,
+  })).reverse();
+
+  const formattedCarsData = historicalCars.map((point, index) => ({
+    time: `${historicalCars.length - index}s`,
+    normal: point.normal,
+    commercial: point.commercial,
+  })).reverse();
 
   // ------------------------------------------------------------------------
 
@@ -98,11 +114,11 @@ const TrafficMonitorUI = () => {
         <div className="bg-zinc-800 rounded-2xl p-6 w-full md:w-3/5">
           <h2 className="text-4xl mb-4">Power Consumption Over Time</h2>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={powerData}>
+            <LineChart data={formattedPowerData}>
               <XAxis dataKey="time" stroke="#aaa" />
               <YAxis
                 stroke="#aaa"
-                domain={[20, 100]}
+                domain={[0, 'auto']}
                 tickCount={5}
                 tickFormatter={(value) => `${value}mAh`}
               />
@@ -141,9 +157,9 @@ const TrafficMonitorUI = () => {
         <div className="bg-zinc-800 rounded-2xl p-6 flex-[5]">
           <h2 className="text-4xl mb-4">Cars Passed Over Time</h2>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={carsData}>
+            <LineChart data={formattedCarsData}>
               <XAxis dataKey="time" stroke="#aaa" />
-              <YAxis stroke="#aaa" domain={[2, 10]} tickCount={5} />
+              <YAxis stroke="#aaa" domain={[0, 'auto']} tickCount={5} />
               <Tooltip />
               <Legend />
               <Line type="monotone" dataKey="normal" stroke="#f6ad55" name="Normal" strokeWidth={2} dot={false} />
