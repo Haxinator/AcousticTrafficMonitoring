@@ -35,6 +35,8 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, con
 import itertools
 import numpy as np
 import pandas as pd
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
 
 # for paths
 import os
@@ -117,34 +119,33 @@ val_ds = TensorDataset(X_val, y_val)
 val_dl = DataLoader(val_ds, batch_size=n_batches, shuffle=False)
 
 # # -------------------- Collect Vmems ------------------------
-# vmem_file = os.path.join("vmem_calibration", "all_vmems.npy")
-# labels_file = os.path.join("vmem_calibration", "all_labels.npy")
-# all_vmems = []
-# all_labels = []
+vmem_file = os.path.join("vmem_calibration", "all_vmems.npy")
+labels_file = os.path.join("vmem_calibration", "all_labels.npy")
+all_vmems = []
+all_labels = []
 
-# if os.path.exists(vmem_file) and os.path.exists(labels_file):
-#     print("Found existing Vmems and labels. Loading from file...")
-#     all_vmems = np.load(vmem_file)
-#     all_labels = np.load(labels_file)
-# else:
-#     print("No saved Vmems found. Running network to collect Vmems...")
-#     all_vmems = []
-#     all_labels = []
-#     with torch.no_grad():
-#         for events, labels in val_dl:
-#             events, labels = events.to(device), labels.to(device)
-#             out, _, _ = vmem_net(events)
-#             output_vmems = out[:, skip_window:, :].mean(dim=1)
-#             all_vmems.append(output_vmems.cpu().numpy())
-#             all_labels.append(labels.cpu().numpy())
+if os.path.exists(vmem_file) and os.path.exists(labels_file):
+    print("Found existing Vmems and labels. Loading from file...")
+    all_vmems = np.load(vmem_file)
+    all_labels = np.load(labels_file)
+else:
+    print("No saved Vmems found. Running network to collect Vmems...")
+    all_vmems = []
+    all_labels = []
+    with torch.no_grad():
+        for events, labels in val_dl:
+            events, labels = events.to(device), labels.to(device)
+            out, _, _ = vmem_net(events) 
+            all_vmems.append(out[:, skip_window:, :].cpu().numpy())
+            all_labels.append(labels.cpu().numpy().tolist())
 
-#     all_vmems = np.concatenate(all_vmems, axis=0)
-#     all_labels = np.concatenate(all_labels, axis=0)
-#     print("----- Vmem collection complete ------")
-#     print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
+all_vmems = np.concatenate(all_vmems, axis=0)
+all_labels = np.concatenate(all_labels, axis=0)
+print("----- Vmem collection complete ------")
+print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
 
-#     np.save(vmem_file, all_vmems)
-#     np.save(labels_file, all_labels)
+""" np.save(vmem_file, all_vmems)
+np.save(labels_file, all_labels) """
 
 # # -------------------- Vmem Range Analysis -------------------
 # lowest_vmem = np.min(all_vmems)
@@ -262,6 +263,74 @@ opt_thresholds = (np.float64(0.5), np.float64(1.0), np.float64(-5.0))
 
 print(
     f"\nSelected optimal thresholds based on manual comparison: {opt_thresholds}")
+
+y_true_bin = label_binarize(all_labels, classes=np.arange(n_labels))
+
+# --------- ROC using Vmem values ---------
+plt.figure(figsize=(12, 5))
+
+plt.subplot(1, 2, 1)
+vmem_scores = all_vmems.mean(axis=1)
+
+for i, cname in enumerate(class_names):
+    scores = vmem_scores[:, i]
+
+    fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+    roc_auc = auc(fpr, tpr)
+
+    plt.plot(fpr, tpr, lw=2, label=f"{cname} (AUC={roc_auc:.2f})")
+
+    step = max(1, len(thresholds) // 10)
+    for j in range(0, len(thresholds), step):
+        plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f"{thresholds[j]:.2f}", 
+                color="blue", fontsize=7, alpha=0.7)
+
+plt.plot([0, 1], [0, 1], linestyle="--", color="gray", alpha=0.5)
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC per Label (Vmem outputs)")
+plt.legend(loc="lower right")
+plt.grid(alpha=0.3)
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.05])
+
+# --------- ROC using Spike counts  ---------
+plt.subplot(1, 2, 2)
+
+spike_counts_for_roc = np.sum((all_vmems >= 0).astype(int), axis=1)
+
+for i, cname in enumerate(class_names):
+    scores = spike_counts_for_roc[:, i]
+
+    fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+    roc_auc = auc(fpr, tpr)
+
+    plt.plot(fpr, tpr, lw=2, label=f'{cname} (AUC={roc_auc:.2f})')
+
+    step = max(1, len(thresholds) // 10)
+    for j in range(0, len(thresholds), step):
+        plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f'{thresholds[j]:.0f}',
+                color='blue', fontsize=7, alpha=0.7)
+
+plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.5)')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curves (Using Spike Counts)')
+plt.legend()
+plt.grid(alpha=0.3)
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.05])
+
+plt.tight_layout()
+plt.savefig(os.path.join("plots", "ROC_vmem_vs_spikes_fixed.png"))
+plt.show()
+
+scores = spike_counts_for_roc[:, 0]
+fpr, tpr, thresholds = roc_curve(y_true_bin[:, 0], scores)
+distances = (fpr - 0)**2 + (tpr - 1)**2
+optimal_index = np.argmin(distances)
+optimal_threshold_class0 = thresholds[optimal_index]
+print(f"Optimal threshold for Class 0: {optimal_threshold_class0}")
 # --- Hardware and Network Initialization ---
 hdk_initialized = False
 modSamna = None
@@ -322,7 +391,7 @@ def initialize_hardware():
         elif xylo_board_name == 'XyloAudio3':
             modSim = xa3.XyloSim.from_config(config, dt=dt)
 
-    if hdk and True: # assuming freeInferenceMode is always true for this path
+    if hdk and True:
         output_mode = "Spike"
         amplify_level = "low"
         hibernation = False
