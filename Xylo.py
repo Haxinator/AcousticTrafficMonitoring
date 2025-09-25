@@ -135,7 +135,7 @@ else:
     with torch.no_grad():
         for events, labels in val_dl:
             events, labels = events.to(device), labels.to(device)
-            out, _, _ = vmem_net(events) 
+            out, _, _ = vmem_net(events)
             all_vmems.append(out[:, skip_window:, :].cpu().numpy())
             all_labels.append(labels.cpu().numpy().tolist())
 
@@ -146,118 +146,6 @@ print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
 
 """ np.save(vmem_file, all_vmems)
 np.save(labels_file, all_labels) """
-
-# # -------------------- Vmem Range Analysis -------------------
-# lowest_vmem = np.min(all_vmems)
-# highest_vmem = np.max(all_vmems)
-# print(f"Lowest Vmem recorded: {lowest_vmem:.4f}")
-# print(f"Highest Vmem recorded: {highest_vmem:.4f}")
-
-# # ------------------- Automated Grid-Search Thresholding -------------------
-# print("Starting automated grid search for optimal thresholds...")
-
-# threshold_ranges = {
-#     0: np.arange(-5.0, 10.0, 0.5),   # Car
-#     1: np.arange(-5.0, 10.0, 0.5),   # Commercial
-#     2: np.arange(-5.0, 10.0, 0.5),   # Background
-# }
-
-# best_macro_f1 = -1
-# grid_search_thresholds = None
-
-# all_threshold_combinations = list(itertools.product(
-#     threshold_ranges[0],
-#     threshold_ranges[1],
-#     threshold_ranges[2]
-# ))
-
-# for tset in all_threshold_combinations:
-#     spikes = (all_vmems >= tset).astype(int)
-#     preds = np.argmax(spikes, axis=1)
-
-#     acc = accuracy_score(all_labels, preds)
-#     precision, recall, f1, _ = precision_recall_fscore_support(
-#         all_labels, preds, average=None, zero_division=0
-#     )
-#     macro_f1 = np.mean(f1)
-
-#     if macro_f1 > best_macro_f1:
-#         best_macro_f1 = macro_f1
-#         grid_search_thresholds = tset
-# # ------------------- Iterative Threshold Adjustment -------------------
-# print("Starting iterative threshold adjustment...")
-
-# thresholds = np.zeros(n_labels)  # [0.0, 0.0, 0.0]
-# step_size = 0.1
-# max_iterations = 100
-# tol = 1e-4
-
-# best_macro_f1 = -1
-# interative_thresholds = thresholds.copy()
-
-# for it in range(max_iterations):
-#     improved = False
-#     for idx in range(n_labels):
-#         for delta in [-step_size, step_size]:
-#             temp_thresholds = thresholds.copy()
-#             temp_thresholds[idx] += delta
-
-#             spikes = (all_vmems >= temp_thresholds).astype(int)
-#             preds = np.argmax(spikes, axis=1)
-
-#             _, _, f1, _ = precision_recall_fscore_support(
-#                 all_labels, preds, average=None, zero_division=0
-#             )
-#             macro_f1 = np.mean(f1)
-
-#             if macro_f1 > best_macro_f1 + tol:
-#                 best_macro_f1 = macro_f1
-#                 interative_thresholds = temp_thresholds.copy()
-#                 improved = True
-
-#     if not improved:
-#         break
-#     thresholds = interative_thresholds .copy()
-# # ------------------- Manual Threshold Comparison -------------------
-# print("Starting manual threshold comparison...")
-
-# best_macro_f1_manual = -1
-# opt_thresholds = None
-
-# # Define the threshold sets you want to test
-# manual_thresholds_to_test = [
-#     [0.1, 0.2, 0.0],
-#     [-1.0, 6.0, 4.0],
-#     [1.0, 1.0, 1.0],
-#     [3.0, 4.0, 5.0],
-#     grid_search_thresholds,
-#     interative_thresholds,
-# ]
-
-# for idx, tset in enumerate(manual_thresholds_to_test):
-#     print(f"\n----- Evaluating Threshold Set {idx+1}: {tset} -----")
-
-#     spikes = (all_vmems >= tset).astype(int)
-#     preds = np.argmax(spikes, axis=1)
-
-#     acc = accuracy_score(all_labels, preds)
-#     precision, recall, f1, _ = precision_recall_fscore_support(
-#         all_labels, preds, average=None, zero_division=0
-#     )
-#     macro_f1 = np.mean(f1)
-#     conf_matrix = confusion_matrix(all_labels, preds)
-
-#     print(f"Macro F1: {macro_f1:.4f}")
-#     print(f"Accuracy: {acc:.4f}")
-#     for c_idx, cname in enumerate(class_names):
-#         print(
-#             f"{cname}: Precision={precision[c_idx]:.3f}, Recall={recall[c_idx]:.3f}, F1={f1[c_idx]:.3f}")
-#     print("Confusion Matrix:")
-#     print(conf_matrix)
-
-#     if macro_f1 > best_macro_f1_manual:
-#         best_macro_f1_manual = macro_f1
-#         opt_thresholds = tset
 
 opt_thresholds = (np.float64(0.5), np.float64(1.0), np.float64(-5.0))
 
@@ -282,8 +170,8 @@ for i, cname in enumerate(class_names):
 
     step = max(1, len(thresholds) // 10)
     for j in range(0, len(thresholds), step):
-        plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f"{thresholds[j]:.2f}", 
-                color="blue", fontsize=7, alpha=0.7)
+        plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f"{thresholds[j]:.2f}",
+                 color="blue", fontsize=7, alpha=0.7)
 
 plt.plot([0, 1], [0, 1], linestyle="--", color="gray", alpha=0.5)
 plt.xlabel("False Positive Rate")
@@ -310,7 +198,7 @@ for i, cname in enumerate(class_names):
     step = max(1, len(thresholds) // 10)
     for j in range(0, len(thresholds), step):
         plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f'{thresholds[j]:.0f}',
-                color='blue', fontsize=7, alpha=0.7)
+                 color='blue', fontsize=7, alpha=0.7)
 
 plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.5)')
 plt.xlabel('False Positive Rate')
@@ -325,18 +213,83 @@ plt.tight_layout()
 plt.savefig(os.path.join("plots", "ROC_vmem_vs_spikes_fixed.png"))
 plt.show()
 
+# --------- Vehicle combined (with Background) ---------
+
+y_true_vehicle = np.logical_or(y_true_bin[:, 0], y_true_bin[:, 1]).astype(int)
+
+vmem_scores_vehicle = np.maximum(vmem_scores[:, 0], vmem_scores[:, 1])
+vmem_scores_background = vmem_scores[:, 2] 
+
+spike_counts_vehicle = np.maximum(spike_counts_for_roc[:, 0], spike_counts_for_roc[:, 1])
+
+plt.figure(figsize=(8, 6)) # Increased figure size for better visibility
+
+# --- Plot Vmem-based Vehicle ROC ---
+fpr_vmem_vehicle, tpr_vmem_vehicle, thresholds_vmem_vehicle = roc_curve(y_true_vehicle, vmem_scores_vehicle)
+roc_auc_vmem_vehicle = auc(fpr_vmem_vehicle, tpr_vmem_vehicle)
+
+plt.plot(fpr_vmem_vehicle, tpr_vmem_vehicle, lw=3, color='darkorange',
+         label=f'Vehicle (Combined Vmem) (AUC={roc_auc_vmem_vehicle:.2f})')
+
+step_vmem_vehicle = max(1, len(thresholds_vmem_vehicle) // 10)
+for j in range(0, len(thresholds_vmem_vehicle), step_vmem_vehicle):
+    plt.text(fpr_vmem_vehicle[j] + 0.01, tpr_vmem_vehicle[j] - 0.01, f"{thresholds_vmem_vehicle[j]:.2f}",
+             color="blue", fontsize=7, alpha=0.7)
+
+# --- Plot Vmem-based Background ROC ---
+fpr_vmem_bg, tpr_vmem_bg, thresholds_vmem_bg = roc_curve(y_true_bin[:, 2], vmem_scores_background)
+roc_auc_vmem_bg = auc(fpr_vmem_bg, tpr_vmem_bg)
+
+plt.plot(fpr_vmem_bg, tpr_vmem_bg, lw=2, color='gray', linestyle=':',
+         label=f'Background (Individual Vmem) (AUC={roc_auc_vmem_bg:.2f})')
+
+# Add threshold labels for Background scores (using a different color for clarity)
+step_vmem_bg = max(1, len(thresholds_vmem_bg) // 10)
+for j in range(0, len(thresholds_vmem_bg), step_vmem_bg):
+    plt.text(fpr_vmem_bg[j] + 0.01, tpr_vmem_bg[j] - 0.01, f"{thresholds_vmem_bg[j]:.2f}",
+             color="red", fontsize=7, alpha=0.7)
+
+
+# --- C. Plot Spike-based Vehicle ROC ---
+fpr_spikes, tpr_spikes, thresholds_spikes = roc_curve(y_true_vehicle, spike_counts_vehicle)
+roc_auc_spikes = auc(fpr_spikes, tpr_spikes)
+
+plt.plot(fpr_spikes, tpr_spikes, lw=2, color='green', linestyle='--',
+         label=f'Vehicle (Combined Spikes) (AUC={roc_auc_spikes:.2f})')
+
+step_spikes = max(1, len(thresholds_spikes) // 10)
+for j in range(0, len(thresholds_spikes), step_spikes):
+    plt.text(fpr_spikes[j] + 0.01, tpr_spikes[j] - 0.01, f'{thresholds_spikes[j]:.0f}',
+             color='darkgreen', fontsize=7, alpha=0.7)
+
+# --- Final Plotting details ---
+plt.plot([0, 1], [0, 1], linestyle="--", color="black",
+         alpha=0.5, label='Chance (AUC = 0.5)')
+plt.xlabel("False Positive Rate (FPR)")
+plt.ylabel("True Positive Rate (TPR)")
+plt.title("ROC Curve: Vehicle Detection vs. Background Comparison")
+plt.legend(loc="lower right")
+plt.grid(alpha=0.3)
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.05])
+plt.tight_layout()
+plt.savefig(os.path.join("plots", "ROC_Vehicle_Background_Comparison.png"))
+plt.show()
+
 scores = spike_counts_for_roc[:, 0]
 fpr, tpr, thresholds = roc_curve(y_true_bin[:, 0], scores)
 distances = (fpr - 0)**2 + (tpr - 1)**2
 optimal_index = np.argmin(distances)
 optimal_threshold_class0 = thresholds[optimal_index]
 print(f"Optimal threshold for Class 0: {optimal_threshold_class0}")
+
 # --- Hardware and Network Initialization ---
 hdk_initialized = False
 modSamna = None
 modSim = None
 modMonitor = None
 hdk = None
+
 
 def initialize_hardware():
     global hdk_initialized, modSamna, modSim, modMonitor, hdk
@@ -346,7 +299,7 @@ def initialize_hardware():
         return
 
     print("Initializing hardware and network...")
-    
+
     net = SynNet(
         p_dropout=0.2,
         n_channels=net_in_channels,
@@ -354,23 +307,25 @@ def initialize_hardware():
         size_hidden_layers=[24, 24, 24],
         time_constants_per_layer=[2, 4, 8],
     )
-    
+
     net.load(model_path)
     net.seq.out_neurons = LIFTorch([3, 3], threshold=opt_thresholds)
-    
+
     spec = None
     if xylo_board_name == 'XyloAudio2':
-        spec = xa2.mapper(net.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
+        spec = xa2.mapper(net.as_graph(), weight_dtype='float',
+                          threshold_dtype='float', dash_dtype='float')
     elif xylo_board_name == 'XyloAudio3':
-        spec = xa3.mapper(net.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
+        spec = xa3.mapper(net.as_graph(), weight_dtype='float',
+                          threshold_dtype='float', dash_dtype='float')
 
     unquantised_spec = spec.copy()
     spec.update(q.channel_quantize(**spec))
-    
+
     config, is_valid, msg = (xa2.config_from_specification(**spec) if xylo_board_name == 'XyloAudio2'
                              else xa3.config_from_specification(**spec))
     assert is_valid, msg
-    
+
     xylo_hdk_nodes, modules, versions = find_xylo_hdks()
     print(f'HDK versions detected: {versions}')
 
@@ -401,14 +356,18 @@ def initialize_hardware():
             modMonitor = xa2.XyloMonitor(hdk, config, dt=dt, output_mode=output_mode,
                                          amplify_level=amplify_level, hibernation_mode=hibernation, divisive_norm=DN)
         elif xylo_board_name == 'XyloAudio3':
-            modMonitor = xa3.XyloMonitor(hdk, config, dt=dt, output_mode=output_mode, hibernation_mode=hibernation, dn_active=DN)
+            modMonitor = xa3.XyloMonitor(
+                hdk, config, dt=dt, output_mode=output_mode, hibernation_mode=hibernation, dn_active=DN)
 
     hdk_initialized = True
     print("Hardware initialization complete.")
 
+
 initialize_hardware()
 
 # ----------------------------------- WebSocket Endpoint ------------------------------
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     global modSamna, modSim, modMonitor, hdk
@@ -442,9 +401,11 @@ async def websocket_endpoint(ws: WebSocket):
 
             if modMonitor:
                 modMonitor.reset_state()
-                output, _, r_d = modMonitor(input_data=input_data, record_power=True)
+                output, _, r_d = modMonitor(
+                    input_data=input_data, record_power=True)
             elif modSamna:
-                output, _, r_d = modSamna(input_data, record=True, record_power=True)
+                output, _, r_d = modSamna(
+                    input_data, record=True, record_power=True)
             elif modSim:
                 print("Running in simulation mode with test data.")
                 output, _, r_d = modSim(input_data, record=True)
@@ -466,12 +427,15 @@ async def websocket_endpoint(ws: WebSocket):
             if hdk and 'io_power' in r_d:
                 power = np.mean(r_d['io_power'])
                 if xylo_board_name == 'XyloAudio3':
-                    power += np.mean(r_d['analog_power']) + np.mean(r_d['digital_power'])
+                    power += np.mean(r_d['analog_power']) + \
+                        np.mean(r_d['digital_power'])
                 elif xylo_board_name == 'XyloAudio2':
-                    power += np.mean(r_d['afe_core_power']) + np.mean(r_d['afe_ldo_power']) + np.mean(r_d['snn_core_power'])
+                    power += np.mean(r_d['afe_core_power']) + np.mean(
+                        r_d['afe_ldo_power']) + np.mean(r_d['snn_core_power'])
 
             if prediction != 2:
-                current_last_car = {0: "Normal", 1: "Commercial"}.get(prediction, "Invalid")
+                current_last_car = {0: "Normal", 1: "Commercial"}.get(
+                    prediction, "Invalid")
                 if prediction == 0:
                     total_normal += 1
                 elif prediction == 1:
