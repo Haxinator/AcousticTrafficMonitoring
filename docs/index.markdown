@@ -68,8 +68,8 @@ pip install -r requirements.txt
 
 ### 2. Data Preprocessing
 
-- ~~Download [DCASE2024 Acoustic Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring)~~ (This was used as our training dataset, however, ths quality of the dataset is not satisfying. As a result, we switch to the new dataset)
-- Download [IDMT-TRAFFIC - Fraunhofer IDMT](https://www.idmt.fraunhofer.de/en/publications/datasets/traffic.html)
+- Download [IDMT-TRAFFIC - Fraunhofer IDMT](https://www.idmt.fraunhofer.de/en/publications/datasets/traffic.html) (The basic dataset we use)
+- Download [DCASE2024 Acoustic Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring) (We use some commercial vehicle samples from this dataset as supplementary)
 - Place `loc*` directories into `Datapreprocessing/`
 - Run the following notebooks:
   - `data_preprocessing.ipynb`: to extract segments
@@ -86,7 +86,14 @@ pip install -r requirements.txt
   - CUDA toolkit
 
 ```bash
+# Install Rockpool
 pip install "rockpool[sinabs, exodus]"
+```
+
+```bash
+# Install CUDA
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install tensorflow[and-cuda]
 ```
 
 Run the model:
@@ -175,3 +182,14 @@ conda install -c conda-forge rockpool
 ```
 
 ## The process of the research and development
+At the beginning of the project, we started training our model using a dataset recommended by the client. This dataset served as the foundation for our initial experimentation. However, before training could begin, we performed manual filtering to eliminate low-quality samples, ensuring that only high-quality audio segments were used for model input. While this process improved data reliability, it drastically reduced the available sample size.
+
+To compensate for this shortage, we implemented data augmentation by segmenting each sample into multiple shorter samples. These segments were then further processed into different feature channels, where each channel represented a specific acoustic characteristic. All channels were merged and transformed into spiking neuron inputs, which would eventually produce binary outputs — 0 or 1, representing vehicle class.
+
+We trained the model using the Rockpool framework, which allowed us to simulate and evolve spiking neural networks with temporal dynamics. However, no matter how we adjusted the parameters or increased the number of training epochs, the model’s performance remained stagnant. The validation accuracy consistently hovered around 50%, far below our goal of 90%, indicating possible data bottlenecks rather than model flaws.
+
+Realizing this, we began searching for an alternative dataset with cleaner labels and more consistent audio quality. Eventually, we found a higher-quality dataset that significantly improved baseline accuracy. However, this new dataset lacked sufficient truck samples. To address this, we merged selected high-quality truck audio segments from the original dataset with the new one, creating a hybrid dataset that offered both balance and accuracy.
+
+This decision proved crucial. On the very first training run using the hybrid dataset, accuracy immediately exceeded 50%, and continued to improve with parameter tuning. After several iterations, the model finally surpassed 90% accuracy, achieving our project target.
+
+To accelerate training time and improve resource efficiency, we also leveraged CUDA-based GPU acceleration using the Exodus backend in Rockpool. This significantly reduced the training duration and allowed us to experiment more rapidly with hyperparameters.
