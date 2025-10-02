@@ -108,9 +108,9 @@ except FileNotFoundError:
 
 try:
     X_val = torch.from_numpy(
-        np.load(os.path.join(data_path, "X_val.npy"))).float()
+        np.load(os.path.join(data_path, "CustomDataset/X_val.npy"))).float()
     y_val = torch.from_numpy(
-        np.load(os.path.join(data_path, "y_val.npy"))).long()
+        np.load(os.path.join(data_path, "CustomDataset/y_val.npy"))).long()
 except FileNotFoundError:
     print("Validation data not found. Please check the path.")
     exit()
@@ -211,7 +211,7 @@ plt.ylim([-0.05, 1.05])
 
 plt.tight_layout()
 plt.savefig(os.path.join("plots", "ROC_vmem_vs_spikes_fixed.png"))
-plt.show()
+#plt.show()
 
 # --------- Vehicle combined (with Background) ---------
 
@@ -274,14 +274,14 @@ plt.xlim([-0.05, 1.05])
 plt.ylim([-0.05, 1.05])
 plt.tight_layout()
 plt.savefig(os.path.join("plots", "ROC_Vehicle_Background_Comparison.png"))
-plt.show()
+#plt.show()
 
 scores = spike_counts_for_roc[:, 0]
 fpr, tpr, thresholds = roc_curve(y_true_bin[:, 0], scores)
 distances = (fpr - 0)**2 + (tpr - 1)**2
 optimal_index = np.argmin(distances)
-optimal_threshold_class0 = thresholds[optimal_index]
-print(f"Optimal threshold for Class 0: {optimal_threshold_class0}")
+optimal_threshold = thresholds[optimal_index]
+print(f"Optimal threshold: {optimal_threshold}")
 
 # --- Hardware and Network Initialization ---
 hdk_initialized = False
@@ -290,6 +290,88 @@ modSim = None
 modMonitor = None
 hdk = None
 
+def plot_quantised_ROC():
+
+    net_quant = SynNet(
+        p_dropout=0.2,
+        n_channels=net_in_channels,
+        n_classes=n_labels,
+        size_hidden_layers=[24, 24, 24],
+        time_constants_per_layer=[2, 4, 8],
+    ).to("cpu")
+    net_quant.load(model_path)
+    net_quant.seq.out_neurons = LIFTorch([3, 3], threshold=optimal_threshold)
+
+    spec = None
+    if xylo_board_name == 'XyloAudio2':
+        import rockpool.devices.xylo.syns61201 as xa2
+        spec = xa2.mapper(net_quant.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
+    elif xylo_board_name == 'XyloAudio3':
+        import rockpool.devices.xylo.syns65302 as xa3
+        spec = xa3.mapper(net_quant.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
+
+    if spec is not None:
+        unquantised_spec = spec.copy()
+        quantised_spec = spec.copy()
+        quantised_spec.update(q.channel_quantize(**quantised_spec))
+
+        if xylo_board_name == 'XyloAudio2':
+            quant_sim = xa2.XyloSim.from_specification(**quantised_spec)
+        elif xylo_board_name == 'XyloAudio3':
+            quant_sim = xa3.XyloSim.from_specification(**quantised_spec)
+        else:
+            print("Warning: Xylo board name not recognized for simulation. Skipping quantized ROC.")
+            quant_sim = None
+
+        if quant_sim:
+            all_quant_spikes = []
+            quant_sim.reset_state()
+
+            with torch.no_grad():
+                for events, _ in val_dl:
+                    input_data_np = events.cpu().numpy()
+                    input_spikes_np = np.rint(input_data_np).astype(np.intc)
+                    batch_size, time_steps, channels = input_spikes_np.shape
+                    
+                    reshaped_spikes = input_spikes_np.reshape(batch_size * time_steps, channels)
+                    output_spikes, _, _ = quant_sim(reshaped_spikes)
+
+                    output_spikes_reshaped = output_spikes.reshape(batch_size, time_steps, output_spikes.shape[-1])
+                    
+                    all_quant_spikes.append(output_spikes_reshaped)
+
+            all_quant_spikes = np.concatenate(all_quant_spikes, axis=0)
+
+            quant_spike_counts_for_roc = np.sum(all_quant_spikes, axis=1)
+
+            plt.figure(figsize=(8, 6))
+
+            for i, cname in enumerate(class_names):
+                scores = quant_spike_counts_for_roc[:, i]
+
+                fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+                roc_auc = auc(fpr, tpr)
+
+                plt.plot(fpr, tpr, lw=2, label=f'{cname} (Quantized Spikes AUC={roc_auc:.2f})')
+
+                step = max(1, len(thresholds) // 10)
+                for j in range(0, len(thresholds), step):
+                    plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f'{thresholds[j]:.0f}',
+                            color='blue', fontsize=7, alpha=0.7)
+
+        plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.5)')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curves (Quantized Spike Counts)')
+        plt.legend()
+        plt.grid(alpha=0.3)
+        plt.xlim([-0.05, 1.05])
+        plt.ylim([-0.05, 1.05])
+        plt.tight_layout()
+        plt.savefig(os.path.join("plots", "ROC_Quantized_Spikes.png"))
+        #plt.show()
+    else:
+        print("Quantized specification could not be created. Skipping quantized ROC.")
 
 def initialize_hardware():
     global hdk_initialized, modSamna, modSim, modMonitor, hdk
@@ -309,7 +391,7 @@ def initialize_hardware():
     )
 
     net.load(model_path)
-    net.seq.out_neurons = LIFTorch([3, 3], threshold=opt_thresholds)
+    net.seq.out_neurons = LIFTorch([3, 3], threshold=optimal_threshold)
 
     spec = None
     if xylo_board_name == 'XyloAudio2':
@@ -362,9 +444,8 @@ def initialize_hardware():
     hdk_initialized = True
     print("Hardware initialization complete.")
 
-
+plot_quantised_ROC()
 initialize_hardware()
-
 # ----------------------------------- WebSocket Endpoint ------------------------------
 
 
@@ -410,7 +491,7 @@ async def websocket_endpoint(ws: WebSocket):
                 print("Running in simulation mode with test data.")
                 output, _, r_d = modSim(input_data, record=True)
 
-            print(output)
+            #print(output)
 
             prediction_threshold = 500
             prediction_sum = np.sum(output, axis=0)
@@ -421,7 +502,7 @@ async def websocket_endpoint(ws: WebSocket):
             elif prediction_sum[1] > prediction_threshold:
                 prediction = 1
 
-            print(f"Prediction sum:{prediction_sum}, Prediction:{prediction}")
+            #print(f"Prediction sum:{prediction_sum}, Prediction:{prediction}")
 
             power = 0
             if hdk and 'io_power' in r_d:
