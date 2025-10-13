@@ -1,7 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
-import 'react-circular-progressbar/dist/styles.css';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import React, { useEffect, useState } from "react";
+import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
+import "react-circular-progressbar/dist/styles.css";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 
 // Type "npm start" in the terminal to run the FrontEnd
 const TrafficMonitorUI = () => {
@@ -52,21 +60,29 @@ const TrafficMonitorUI = () => {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      const now = new Date().toLocaleTimeString();
+
       setLastCar(data.lastCar);
       setPower(data.power);
       setTotalNormal(data.totalNormal);
       setTotalCommercial(data.totalCommercial);
       setTotalVehicles(data.totalVehicles);
 
-      // Update historical data and keep only the last 60 seconds
-      setHistoricalPower(prevData => {
-        const newData = [...prevData, { power: data.power }];
-        return newData.slice(Math.max(newData.length - 60, 0));
+      setHistoricalPower((prevData) => {
+        const newData = [...prevData, { time: now, power: data.power }];
+        return newData.slice(-60); // last 60 seconds
       });
 
-      setHistoricalCars(prevData => {
-        const newData = [...prevData, { normal: data.totalNormal, commercial: data.totalCommercial }];
-        return newData.slice(Math.max(newData.length - 60, 0));
+      setHistoricalCars((prevData) => {
+        const newData = [
+          ...prevData,
+          {
+            time: now,
+            normal: data.totalNormal,
+            commercial: data.totalCommercial,
+          },
+        ];
+        return newData.slice(-60);
       });
     };
 
@@ -74,38 +90,37 @@ const TrafficMonitorUI = () => {
     ws.onclose = () => console.log("WebSocket disconnected");
     ws.onerror = (error) => console.error("WebSocket error:", error);
 
-    return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-    };
+    return () => ws.close();
   }, []);
-
-  const formattedPowerData = historicalPower.map((point, index) => ({
-    time: `${historicalPower.length - index}s`,
-    power: point.power,
-  })).reverse();
-
-  const formattedCarsData = historicalCars.map((point, index) => ({
-    time: `${historicalCars.length - index}s`,
-    normal: point.normal,
-    commercial: point.commercial,
-  })).reverse();
 
   // ------------------------------------------------------------------------
 
   return (
     <div className="min-h-screen bg-black text-white p-6 rounded-3xl flex flex-col gap-6 w-full max-w-7xl mx-auto">
-      <div className="text-3xl font-bold text-center">Ultra-low-power acoustic trafficMonitoring</div>
+      <div className="text-3xl font-bold text-center">
+        Ultra-low-power acoustic trafficMonitoring
+      </div>
 
       <div className="flex flex-col md:flex-row gap-6 justify-between">
         {/* Car status */}
         <div className="bg-zinc-800 rounded-2xl p-6 w-full md:w-1/5 flex flex-col items-center">
           <h2 className="text-4xl mb-4">Last Car</h2>
-          <div className={`w-40 py-3 mb-4 rounded-xl text-center font-semibold ${lastCar === 'Commercial' ? 'bg-yellow-300 text-black' : 'bg-zinc-700 text-gray-400'}`}>
+          <div
+            className={`w-40 py-3 mb-4 rounded-xl text-center font-semibold ${
+              lastCar === "Commercial"
+                ? "bg-yellow-300 text-black"
+                : "bg-zinc-700 text-gray-400"
+            }`}
+          >
             Commercial
           </div>
-          <div className={`w-40 py-3 rounded-xl text-center font-semibold ${lastCar === 'Normal' ? 'bg-yellow-300 text-black' : 'bg-zinc-700 text-gray-400'}`}>
+          <div
+            className={`w-40 py-3 rounded-xl text-center font-semibold ${
+              lastCar === "Normal"
+                ? "bg-yellow-300 text-black"
+                : "bg-zinc-700 text-gray-400"
+            }`}
+          >
             Normal
           </div>
         </div>
@@ -114,16 +129,21 @@ const TrafficMonitorUI = () => {
         <div className="bg-zinc-800 rounded-2xl p-6 w-full md:w-3/5">
           <h2 className="text-4xl mb-4">Power Consumption Over Time</h2>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={formattedPowerData}>
+            <LineChart data={historicalPower}>
               <XAxis dataKey="time" stroke="#aaa" />
               <YAxis
                 stroke="#aaa"
-                domain={[0, 'auto']}
-                tickCount={5}
-                tickFormatter={(value) => `${value}mAh`}
+                domain={[0, "auto"]}
+                tickFormatter={(v) => `${v}mAh`}
               />
               <Tooltip />
-              <Line type="monotone" dataKey="power" stroke="#f6ad55" strokeWidth={2} dot={false} />
+              <Line
+                type="monotone"
+                dataKey="power"
+                stroke="#f6ad55"
+                strokeWidth={2}
+                dot={false}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -137,9 +157,9 @@ const TrafficMonitorUI = () => {
               maxValue={100}
               text={`${power}mAh`}
               styles={buildStyles({
-                pathColor: 'red',
-                textColor: 'white',
-                trailColor: '#555'
+                pathColor: "red",
+                textColor: "white",
+                trailColor: "#555",
               })}
             />
           </div>
@@ -149,21 +169,37 @@ const TrafficMonitorUI = () => {
       {/* Line chart for car numbers */}
       <div className="flex flex-col md:flex-row gap-6">
         <div className="bg-zinc-800 rounded-2xl p-6 flex-1 text-base space-y-20">
-          <div>Total Normal: {String(totalNormal).padStart(3, '0')}</div>
-          <div>Total Commercial: {String(totalCommercial).padStart(3, '0')}</div>
-          <div>Total Vehicles: {String(totalVehicles).padStart(3, '0')}</div>
+          <div>Total Normal: {String(totalNormal).padStart(3, "0")}</div>
+          <div>
+            Total Commercial: {String(totalCommercial).padStart(3, "0")}
+          </div>
+          <div>Total Vehicles: {String(totalVehicles).padStart(3, "0")}</div>
         </div>
 
         <div className="bg-zinc-800 rounded-2xl p-6 flex-[5]">
           <h2 className="text-4xl mb-4">Cars Passed Over Time</h2>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={formattedCarsData}>
+            <LineChart data={historicalCars}>
               <XAxis dataKey="time" stroke="#aaa" />
-              <YAxis stroke="#aaa" domain={[0, 'auto']} tickCount={5} />
+              <YAxis stroke="#aaa" domain={[0, "auto"]} />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey="normal" stroke="#f6ad55" name="Normal" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="commercial" stroke="#a78bfa" name="Commercial" strokeWidth={2} dot={false} />
+              <Line
+                type="monotone"
+                dataKey="normal"
+                stroke="#f6ad55"
+                name="Normal"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="commercial"
+                stroke="#a78bfa"
+                name="Commercial"
+                strokeWidth={2}
+                dot={false}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>

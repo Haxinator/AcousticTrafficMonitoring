@@ -144,144 +144,114 @@ all_labels = np.concatenate(all_labels, axis=0)
 print("----- Vmem collection complete ------")
 print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
 
-""" np.save(vmem_file, all_vmems)
-np.save(labels_file, all_labels) """
-
 opt_thresholds = (np.float64(0.5), np.float64(1.0), np.float64(-5.0))
 
 print(
     f"\nSelected optimal thresholds based on manual comparison: {opt_thresholds}")
 
 y_true_bin = label_binarize(all_labels, classes=np.arange(n_labels))
+# ----------------------------------- Thresholding and Analysis ------------------------------
 
-# --------- ROC using Vmem values ---------
-plt.figure(figsize=(12, 5))
-
-plt.subplot(1, 2, 1)
-vmem_scores = all_vmems.mean(axis=1)
-
-for i, cname in enumerate(class_names):
-    scores = vmem_scores[:, i]
-
-    fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
-    roc_auc = auc(fpr, tpr)
-
-    plt.plot(fpr, tpr, lw=2, label=f"{cname} (AUC={roc_auc:.2f})")
-
-    step = max(1, len(thresholds) // 10)
-    for j in range(0, len(thresholds), step):
-        plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f"{thresholds[j]:.2f}",
-                 color="blue", fontsize=7, alpha=0.7)
-
-plt.plot([0, 1], [0, 1], linestyle="--", color="gray", alpha=0.5)
-plt.xlabel("False Positive Rate")
-plt.ylabel("True Positive Rate")
-plt.title("ROC per Label (Vmem outputs)")
-plt.legend(loc="lower right")
-plt.grid(alpha=0.3)
-plt.xlim([-0.05, 1.05])
-plt.ylim([-0.05, 1.05])
-
-# --------- ROC using Spike counts  ---------
-plt.subplot(1, 2, 2)
-
-spike_counts_for_roc = np.sum((all_vmems >= 0).astype(int), axis=1)
-
-for i, cname in enumerate(class_names):
-    scores = spike_counts_for_roc[:, i]
-
-    fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
-    roc_auc = auc(fpr, tpr)
-
-    plt.plot(fpr, tpr, lw=2, label=f'{cname} (AUC={roc_auc:.2f})')
-
-    step = max(1, len(thresholds) // 10)
-    for j in range(0, len(thresholds), step):
-        plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f'{thresholds[j]:.0f}',
-                 color='blue', fontsize=7, alpha=0.7)
-
-plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.5)')
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('ROC Curves (Using Spike Counts)')
-plt.legend()
-plt.grid(alpha=0.3)
-plt.xlim([-0.05, 1.05])
-plt.ylim([-0.05, 1.05])
-
-plt.tight_layout()
-plt.savefig(os.path.join("plots", "ROC_vmem_vs_spikes_fixed.png"))
-#plt.show()
-
-# --------- Vehicle combined (with Background) ---------
-
-y_true_vehicle = np.logical_or(y_true_bin[:, 0], y_true_bin[:, 1]).astype(int)
-
-vmem_scores_vehicle = np.maximum(vmem_scores[:, 0], vmem_scores[:, 1])
-vmem_scores_background = vmem_scores[:, 2] 
-
-spike_counts_vehicle = np.maximum(spike_counts_for_roc[:, 0], spike_counts_for_roc[:, 1])
-
-plt.figure(figsize=(8, 6)) # Increased figure size for better visibility
-
-# --- Plot Vmem-based Vehicle ROC ---
-fpr_vmem_vehicle, tpr_vmem_vehicle, thresholds_vmem_vehicle = roc_curve(y_true_vehicle, vmem_scores_vehicle)
-roc_auc_vmem_vehicle = auc(fpr_vmem_vehicle, tpr_vmem_vehicle)
-
-plt.plot(fpr_vmem_vehicle, tpr_vmem_vehicle, lw=3, color='darkorange',
-         label=f'Vehicle (Combined Vmem) (AUC={roc_auc_vmem_vehicle:.2f})')
-
-step_vmem_vehicle = max(1, len(thresholds_vmem_vehicle) // 10)
-for j in range(0, len(thresholds_vmem_vehicle), step_vmem_vehicle):
-    plt.text(fpr_vmem_vehicle[j] + 0.01, tpr_vmem_vehicle[j] - 0.01, f"{thresholds_vmem_vehicle[j]:.2f}",
-             color="blue", fontsize=7, alpha=0.7)
-
-# --- Plot Vmem-based Background ROC ---
-fpr_vmem_bg, tpr_vmem_bg, thresholds_vmem_bg = roc_curve(y_true_bin[:, 2], vmem_scores_background)
-roc_auc_vmem_bg = auc(fpr_vmem_bg, tpr_vmem_bg)
-
-plt.plot(fpr_vmem_bg, tpr_vmem_bg, lw=2, color='gray', linestyle=':',
-         label=f'Background (Individual Vmem) (AUC={roc_auc_vmem_bg:.2f})')
-
-# Add threshold labels for Background scores (using a different color for clarity)
-step_vmem_bg = max(1, len(thresholds_vmem_bg) // 10)
-for j in range(0, len(thresholds_vmem_bg), step_vmem_bg):
-    plt.text(fpr_vmem_bg[j] + 0.01, tpr_vmem_bg[j] - 0.01, f"{thresholds_vmem_bg[j]:.2f}",
-             color="red", fontsize=7, alpha=0.7)
+def get_optimal_threshold_from_roc(y_true_bin, scores, class_index):
+    """Compute optimal threshold using ROC distance method."""
+    fpr, tpr, thresholds = roc_curve(y_true_bin[:, class_index], scores)
+    distances = (fpr - 0)**2 + (tpr - 1)**2
+    optimal_index = np.argmin(distances)
+    return thresholds[optimal_index]
 
 
-# --- C. Plot Spike-based Vehicle ROC ---
-fpr_spikes, tpr_spikes, thresholds_spikes = roc_curve(y_true_vehicle, spike_counts_vehicle)
-roc_auc_spikes = auc(fpr_spikes, tpr_spikes)
+def plot_roc_vmem_vs_spike(all_vmems, all_labels, class_names, save_path):
+    """Plot ROC curves for Vmem outputs and Spike counts per label."""
+    y_true_bin = label_binarize(all_labels, classes=np.arange(len(class_names)))
+    vmem_scores = all_vmems.mean(axis=1)
+    spike_counts_for_roc = np.sum((all_vmems >= 0).astype(int), axis=1)
 
-plt.plot(fpr_spikes, tpr_spikes, lw=2, color='green', linestyle='--',
-         label=f'Vehicle (Combined Spikes) (AUC={roc_auc_spikes:.2f})')
+    plt.figure(figsize=(12, 5))
 
-step_spikes = max(1, len(thresholds_spikes) // 10)
-for j in range(0, len(thresholds_spikes), step_spikes):
-    plt.text(fpr_spikes[j] + 0.01, tpr_spikes[j] - 0.01, f'{thresholds_spikes[j]:.0f}',
-             color='darkgreen', fontsize=7, alpha=0.7)
+    plt.subplot(1, 2, 1)
+    thresholds_vmem = {}
+    for i, cname in enumerate(class_names):
+        scores = vmem_scores[:, i]
+        fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+        roc_auc = auc(fpr, tpr)
+        thresholds_vmem[cname] = thresholds[np.argmax(tpr - fpr)]
+        plt.plot(fpr, tpr, lw=2, label=f"{cname} (AUC={roc_auc:.2f})")
 
-# --- Final Plotting details ---
-plt.plot([0, 1], [0, 1], linestyle="--", color="black",
-         alpha=0.5, label='Chance (AUC = 0.5)')
-plt.xlabel("False Positive Rate (FPR)")
-plt.ylabel("True Positive Rate (TPR)")
-plt.title("ROC Curve: Vehicle Detection vs. Background Comparison")
-plt.legend(loc="lower right")
-plt.grid(alpha=0.3)
-plt.xlim([-0.05, 1.05])
-plt.ylim([-0.05, 1.05])
-plt.tight_layout()
-plt.savefig(os.path.join("plots", "ROC_Vehicle_Background_Comparison.png"))
-#plt.show()
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", alpha=0.5)
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC per Label (Vmem outputs)")
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
 
-scores = spike_counts_for_roc[:, 0]
-fpr, tpr, thresholds = roc_curve(y_true_bin[:, 0], scores)
-distances = (fpr - 0)**2 + (tpr - 1)**2
-optimal_index = np.argmin(distances)
-optimal_threshold = thresholds[optimal_index]
-print(f"Optimal threshold: {optimal_threshold}")
+    plt.subplot(1, 2, 2)
+    thresholds_spike = {}
+    for i, cname in enumerate(class_names):
+        scores = spike_counts_for_roc[:, i]
+        fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+        roc_auc = auc(fpr, tpr)
+        thresholds_spike[cname] = thresholds[np.argmax(tpr - fpr)]
+        plt.plot(fpr, tpr, lw=2, label=f"{cname} (AUC={roc_auc:.2f})")
+
+    plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.5)')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC per Label (Spike counts)")
+    plt.legend()
+    plt.grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
+    return {"vmem": thresholds_vmem, "spike": thresholds_spike}
+
+
+def plot_vehicle_background_roc(all_vmems, all_labels, class_names, save_path):
+    """Plot combined ROC for vehicle detection vs background."""
+    y_true_bin = label_binarize(all_labels, classes=np.arange(len(class_names)))
+    vmem_scores = all_vmems.mean(axis=1)
+    spike_counts_for_roc = np.sum((all_vmems >= 0).astype(int), axis=1)
+
+    y_true_vehicle = np.logical_or(y_true_bin[:, 0], y_true_bin[:, 1]).astype(int)
+    vmem_scores_vehicle = np.maximum(vmem_scores[:, 0], vmem_scores[:, 1])
+    vmem_scores_background = vmem_scores[:, 2]
+    spike_counts_vehicle = np.maximum(spike_counts_for_roc[:, 0], spike_counts_for_roc[:, 1])
+
+    plt.figure(figsize=(8, 6))
+
+    fpr_vmem, tpr_vmem, thresholds_vmem = roc_curve(y_true_vehicle, vmem_scores_vehicle)
+    auc_vmem = auc(fpr_vmem, tpr_vmem)
+    plt.plot(fpr_vmem, tpr_vmem, lw=3, color='darkorange', label=f'Vehicle (Vmem) AUC={auc_vmem:.2f}')
+
+    fpr_bg, tpr_bg, thresholds_bg = roc_curve(y_true_bin[:, 2], vmem_scores_background)
+    auc_bg = auc(fpr_bg, tpr_bg)
+    plt.plot(fpr_bg, tpr_bg, lw=2, color='gray', linestyle=':', label=f'Background (AUC={auc_bg:.2f})')
+
+    fpr_spike, tpr_spike, thresholds_spike = roc_curve(y_true_vehicle, spike_counts_vehicle)
+    auc_spike = auc(fpr_spike, tpr_spike)
+    plt.plot(fpr_spike, tpr_spike, lw=2, color='green', linestyle='--', label=f'Vehicle (Spikes) AUC={auc_spike:.2f}')
+
+    plt.plot([0, 1], [0, 1], 'k--', alpha=0.5)
+    plt.xlabel("False Positive Rate (FPR)")
+    plt.ylabel("True Positive Rate (TPR)")
+    plt.title("Vehicle vs Background ROC")
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
+    optimal_threshold = get_optimal_threshold_from_roc(y_true_bin, spike_counts_for_roc[:, 0], 0)
+    print(f"Optimal spike threshold: {optimal_threshold:.3f}")
+
+    return optimal_threshold
+
+
+# --- Run ROC plots ---
+thresholds_summary = plot_roc_vmem_vs_spike(all_vmems, all_labels, class_names, "plots/ROC_vmem_vs_spikes_fixed.png")
+optimal_threshold = plot_vehicle_background_roc(all_vmems, all_labels, class_names, "plots/ROC_Vehicle_Background_Comparison.png")
+print("Threshold summary:", thresholds_summary)
 
 # --- Hardware and Network Initialization ---
 hdk_initialized = False
@@ -444,7 +414,7 @@ def initialize_hardware():
     hdk_initialized = True
     print("Hardware initialization complete.")
 
-plot_quantised_ROC()
+#plot_quantised_ROC()
 initialize_hardware()
 # ----------------------------------- WebSocket Endpoint ------------------------------
 
