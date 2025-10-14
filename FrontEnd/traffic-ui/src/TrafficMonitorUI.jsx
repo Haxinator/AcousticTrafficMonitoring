@@ -11,56 +11,24 @@ import {
   Legend,
 } from "recharts";
 
-// Type "npm start" in the terminal to run the FrontEnd
 const TrafficMonitorUI = () => {
-  // Dummy datas for presenting, need to replace them with actual data from Backend
   const [lastCar, setLastCar] = useState(null);
   const [power, setPower] = useState(80);
   const [totalCommercial, setTotalCommercial] = useState(8);
   const [totalNormal, setTotalNormal] = useState(12);
   const [totalVehicles, setTotalVehicles] = useState(20);
-
   const [historicalPower, setHistoricalPower] = useState([]);
   const [historicalCars, setHistoricalCars] = useState([]);
 
-  // -------------------- Fetching data from Backend-------------------------
-  // useEffect(() => {
-  //   const fetchLastCar = async () => {
-  //     try {
-  //       const res = await fetch("http://localhost:3000/api/lastcar");
-  //       const data = await res.json();
-  //       setLastCar(data.lastCar);
-  //     } catch (err) {
-  //       console.error("Failed to fetch lastCar:", err);
-  //     }
-  //   };
-  //   const fetchPower = async () => {
-  //   try {
-  //       const res = await fetch("http://localhost:3000/api/power");
-  //       const data = await res.json();
-  //       setPower(data.power);
-  //     } catch (err) {
-  //       console.error("Failed to fetch power:", err);
-  //     }
-  //   };
-
-  //   fetchLastCar();
-  //   fetchPower();
-
-  //   // Control the refresh rate of fetching data
-  //   const interval = setInterval(() => {
-  //     fetchLastCar();
-  //     fetchPower();
-  //   }, 1000); // Refresh every 1 second
-  //   return () => clearInterval(interval);
-  // }, []);
+  const WINDOW_MINUTES = 10;
+  const TICK_COUNT = 6;
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3001/ws");
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      const now = new Date().toLocaleTimeString();
+      const now = Date.now();
 
       setLastCar(data.lastCar);
       setPower(data.power);
@@ -68,21 +36,23 @@ const TrafficMonitorUI = () => {
       setTotalCommercial(data.totalCommercial);
       setTotalVehicles(data.totalVehicles);
 
-      setHistoricalPower((prevData) => {
-        const newData = [...prevData, { time: now, power: data.power }];
-        return newData.slice(-60); // last 60 seconds
+      setHistoricalPower((prev) => {
+        const newData = [...prev, { time: now, power: data.power }];
+        const cutoff = now - WINDOW_MINUTES * 60 * 1000;
+        return newData.filter((d) => d.time >= cutoff);
       });
 
-      setHistoricalCars((prevData) => {
+      setHistoricalCars((prev) => {
         const newData = [
-          ...prevData,
+          ...prev,
           {
             time: now,
             normal: data.totalNormal,
             commercial: data.totalCommercial,
           },
         ];
-        return newData.slice(-60);
+        const cutoff = now - WINDOW_MINUTES * 60 * 1000;
+        return newData.filter((d) => d.time >= cutoff);
       });
     };
 
@@ -93,7 +63,15 @@ const TrafficMonitorUI = () => {
     return () => ws.close();
   }, []);
 
-  // ------------------------------------------------------------------------
+  const formatTime = (timestamp) => {
+    const d = new Date(timestamp);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const now = Date.now();
+  const start = now - WINDOW_MINUTES * 60 * 1000;
+  const tickInterval = (WINDOW_MINUTES * 60 * 1000) / (TICK_COUNT - 1);
+  const ticks = Array.from({ length: TICK_COUNT }, (_, i) => start + i * tickInterval);
 
   return (
     <div className="min-h-screen bg-black text-white p-6 rounded-3xl flex flex-col gap-6 w-full max-w-7xl mx-auto">
@@ -125,18 +103,27 @@ const TrafficMonitorUI = () => {
           </div>
         </div>
 
-        {/* Line chart for power consumption */}
+        {/* Power chart */}
         <div className="bg-zinc-800 rounded-2xl p-6 w-full md:w-3/5">
           <h2 className="text-4xl mb-4">Power Consumption Over Time</h2>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={historicalPower}>
-              <XAxis dataKey="time" stroke="#aaa" />
+              <XAxis
+                dataKey="time"
+                stroke="#aaa"
+                type="number"
+                domain={[start, now]}
+                tickFormatter={formatTime}
+                ticks={ticks}
+                scale="time"
+                tick={{ fontFamily: "monospace", fontSize: 12 }}
+              />
               <YAxis
                 stroke="#aaa"
                 domain={[0, "auto"]}
                 tickFormatter={(v) => `${v}mAh`}
               />
-              <Tooltip />
+              <Tooltip labelFormatter={formatTime} />
               <Line
                 type="monotone"
                 dataKey="power"
@@ -148,7 +135,7 @@ const TrafficMonitorUI = () => {
           </ResponsiveContainer>
         </div>
 
-        {/* Battery Ring */}
+        {/* Battery */}
         <div className="bg-zinc-800 rounded-2xl p-6 w-full md:w-1/5 flex flex-col items-center justify-center">
           <h2 className="text-2xl mb-4">Current Power Consumption</h2>
           <div className="w-32 h-32">
@@ -166,13 +153,11 @@ const TrafficMonitorUI = () => {
         </div>
       </div>
 
-      {/* Line chart for car numbers */}
+      {/* Car chart */}
       <div className="flex flex-col md:flex-row gap-6">
         <div className="bg-zinc-800 rounded-2xl p-6 flex-1 text-base space-y-20">
           <div>Total Normal: {String(totalNormal).padStart(3, "0")}</div>
-          <div>
-            Total Commercial: {String(totalCommercial).padStart(3, "0")}
-          </div>
+          <div>Total Commercial: {String(totalCommercial).padStart(3, "0")}</div>
           <div>Total Vehicles: {String(totalVehicles).padStart(3, "0")}</div>
         </div>
 
@@ -180,9 +165,18 @@ const TrafficMonitorUI = () => {
           <h2 className="text-4xl mb-4">Cars Passed Over Time</h2>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={historicalCars}>
-              <XAxis dataKey="time" stroke="#aaa" />
+              <XAxis
+                dataKey="time"
+                stroke="#aaa"
+                type="number"
+                domain={[start, now]}
+                tickFormatter={formatTime}
+                ticks={ticks}
+                scale="time"
+                tick={{ fontFamily: "monospace", fontSize: 12 }}
+              />
               <YAxis stroke="#aaa" domain={[0, "auto"]} />
-              <Tooltip />
+              <Tooltip labelFormatter={formatTime} />
               <Legend />
               <Line
                 type="monotone"
