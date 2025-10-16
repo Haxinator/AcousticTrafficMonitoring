@@ -68,8 +68,9 @@ pip install -r requirements.txt
 
 ### 2. Data Preprocessing
 
-- Download [IDMT-TRAFFIC - Fraunhofer IDMT](https://www.idmt.fraunhofer.de/en/publications/datasets/traffic.html) (The basic dataset we use)
-- Download [DCASE2024 Acoustic Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring) (We use some commercial vehicle samples from this dataset as supplementary)
+- Download [IDMT-TRAFFIC - Fraunhofer IDMT](https://www.idmt.fraunhofer.de/en/publications/datasets/traffic.html) : This is the basic dataset we use, all data samples have high quality, but this dataset is highly unbalanced, the number of commercial vehicle samples are not enough for our training and testing, so we need another dataset as a supplementary.
+- Download [DCASE2024 Acoustic Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring): This is the supplementary dataset we use for the project. Although the quality of this dataset is not very high, we still find some available commercial vehicle sample to use.
+- The total sample size for training is 30K.
 - Place `loc*` directories into `Datapreprocessing/`
 - Run the following notebooks:
   - `data_preprocessing.ipynb`: to extract segments
@@ -130,6 +131,8 @@ npm start
 
 Visit the IP address shown in terminal (usually http://localhost:3000).
 
+![Frontend](/assets/images/frontend.png)
+
 ---
 
 ### 6. Blog Site Deployment
@@ -163,6 +166,7 @@ print(mod.simulation_parameters())
 
 [Xylo deployment quickstart](https://rockpool.ai/devices/quick-xylo/deploy_to_xylo.html)
 
+![Xylo](/assets/images/Xylo.jpg)
 ---
 
 ### 9. Optional: Installing Rockpool
@@ -181,15 +185,25 @@ conda activate rockpool-env
 conda install -c conda-forge rockpool
 ```
 
-## The process of the research and development
+## Model architecture
+The implemented model is based on a Spiking Neural Network (SNN) architecture, comprising an input layer, three hidden layers, and an output layer. The input layer consists of 16 neurons, while each of the three hidden layers contains 24 neurons. The output layer includes 3 neurons responsible for the final classification or decision output (one for car, one for commercial vehicle, and one for background noise). All neurons in the network are Leaky Integrate-and-Fire (LIF) neurons, which encode temporal dynamics by accumulating membrane potential (vmem) over time and emitting spikes once the threshold potential is exceeded.
+
+To enhance computational efficiency, the network employs the LIF Exodus neuron model from Rockpool, which provides optimized support for CUDA acceleration, thereby significantly improving the training performance on compatible GPU hardware.
+
+
+## The Process of the Research and Development
 At the beginning of the project, we started training our model using a dataset recommended by the client. This dataset served as the foundation for our initial experimentation. However, before training could begin, we performed manual filtering to eliminate low-quality samples, ensuring that only high-quality audio segments were used for model input. While this process improved data reliability, it drastically reduced the available sample size.
 
-To compensate for this shortage, we implemented data augmentation by segmenting each sample into multiple shorter samples. These segments were then further processed into different feature channels, where each channel represented a specific acoustic characteristic. All channels were merged and transformed into spiking neuron inputs, which would eventually produce binary outputs — 0 or 1, representing vehicle class.
+To compensate for this shortage, we implemented data augmentation. These segments were then further processed into different feature channels, where each channel represented a specific acoustic characteristic. All channels were merged and transformed into spiking neuron inputs, which would eventually produce binary outputs — 0 or 1, representing vehicle class.
 
 We trained the model using the Rockpool framework, which allowed us to simulate and evolve spiking neural networks with temporal dynamics. However, no matter how we adjusted the parameters or increased the number of training epochs, the model’s performance remained stagnant. The validation accuracy consistently hovered around 50%, far below our goal of 90%, indicating possible data bottlenecks rather than model flaws.
 
-Realizing this, we began searching for an alternative dataset with cleaner labels and more consistent audio quality. Eventually, we found a higher-quality dataset that significantly improved baseline accuracy. However, this new dataset lacked sufficient truck samples. To address this, we merged selected high-quality truck audio segments from the original dataset with the new one, creating a hybrid dataset that offered both balance and accuracy.
+Realizing this, we began searching for an alternative dataset with cleaner labels and more consistent audio quality. Eventually, we found a higher-quality dataset that significantly improved baseline accuracy. However, this new dataset lacked sufficient truck samples. To address this, we merged selected high-quality truck audio segments from the original dataset with the new one, creating a hybrid dataset that offered both balance and accuracy with the sample size around 30K.
 
 This decision proved crucial. On the very first training run using the hybrid dataset, accuracy immediately exceeded 50%, and continued to improve with parameter tuning. After several iterations, the model finally surpassed 90% accuracy, achieving our project target.
 
 To accelerate training time and improve resource efficiency, we also leveraged CUDA-based GPU acceleration using the Exodus backend in Rockpool. This significantly reduced the training duration and allowed us to experiment more rapidly with hyperparameters.
+
+![ROC](/assets/images/ROC.png)
+![accuracy](/assets/images/Accuracy.png)
+![metrics](/assets/images/metrics.png)
