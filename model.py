@@ -38,8 +38,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #need about 37000 epochs to get good accuracy
-n_epochs = 2000
-n_batches = 256
+n_epochs = 500
+n_batches = (int) (256/2)
 n_time = 100
 n_labels = 3
 net_channels = 16
@@ -139,7 +139,8 @@ val_dl = DataLoader(disk_val_dataset, **dataloader_kwargs)
 test_dl = DataLoader(disk_test_dataset, **dataloader_kwargs)
 
 '''
-mingDataPath = os.path.join(dir, "DataPreprocessing", "CustomDataset")
+mingDataPath = os.path.join(dir, "DataPreprocessing", "noisyData")
+# mingDataPath = os.path.join(dir, "DataPreprocessing", "CustomDataset")
 
 #CUDA results in x5 speed increase.
 #ming data results in x6 speed increase.
@@ -173,15 +174,15 @@ torch.manual_seed(1234)
 net = SynNet(
     neuron_model = LIFExodus,
     output="vmem",                       # Use the membrane potential as the output of the network.
-    p_dropout=0.1,                         # probability of dropout (good to prevent overfitting).
+    p_dropout=0.2,                         # probability of dropout (good to prevent overfitting).
 
     #time constants and threshold are not trainable by default.
     #NOTE if not using SynNet then they will be by default.
 
     n_channels = net_channels,                        # Number of input channels (always 16)
     n_classes = n_labels,                          # Number of output classes (car, commercial, background noise).
-    size_hidden_layers = [24, 24, 24],      # Number of neurons in each hidden layer (taken from tutorial)
-    time_constants_per_layer = [3, 6, 9],   # Number of time constants in each hidden layer (taken from tutorial)
+    size_hidden_layers = [32, 32, 28],      # Number of neurons in each hidden layer (taken from tutorial)
+    time_constants_per_layer = [1, 2, 3],   # Number of time constants in each hidden layer (taken from tutorial)
 ).to(device)
 
 #compile model to make it FAST (doesn't work =( )
@@ -222,7 +223,7 @@ best_bot = {}
 train_acc_list = []
 train_loss_list = []
 val_acc_list = []
-skip_window = 30
+skip_window = 15
 
 #initialise stat list to empty (for now)
 stats = {"train_acc_list": train_acc_list, "train_loss_list": train_loss_list, "val_acc_list": val_acc_list, "correct": correct, "total": total, "total_loss": total_loss, "best_val_acc": best_val_acc, "total_epochs": total_epochs, "test_acc": 0}
@@ -341,8 +342,8 @@ def train(net, train_dl, val_dl, test_dl):
 #%%
 stat_file_name = "New_Stats.json"
 model_file_name = "New_Model.json"
-bestStat_file_name = "Best_Stats.json"
-bestModel_file_name = "Best_Model.json"
+bestStat_file_name = "moreNoise_Stats.json"
+bestModel_file_name = "moreNoise_Model.json"
 #%%
 #load model if save exists.
 if os.path.exists(os.path.join(dir, model_file_name)):
