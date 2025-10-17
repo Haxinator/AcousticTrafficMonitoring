@@ -21,6 +21,10 @@ cudnn-local-repo-ubuntu2204-8.9.7.29_1.0-1_amd64.deb
 !bg.npy
 !car.npy
 !cv.npy
+node_modules/
+build/
+dist/
+.env
 DataPreprocessing/CustomDataset.zip
 DataPreprocessing/CustomDatasetRaw.zip
 DataPreprocessing/CustomRawDataset/cv/2019-11-19-16-30_Langewiesener-Strasse_50Kmh_1785464_A_D_TL.zip

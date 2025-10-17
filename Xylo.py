@@ -8,8 +8,9 @@ from rockpool.devices.xylo import find_xylo_hdks
 from rockpool.nn.modules import LIFTorch
 
 # Use fastapi to connect with the frontend
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 
 # - Import torch training utilities
 import torch
@@ -22,11 +23,20 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 import torch.nn.functional as F
 
+# simulation
+from starlette.websockets import WebSocketDisconnect
+import random
+import librosa
+from scipy.signal import butter, filtfilt
+from rockpool.devices.xylo.syns65302 import AFESimExternal
+
 # Thresholding and merics
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 import itertools
 import numpy as np
 import pandas as pd
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
 
 # for paths
 import os
@@ -50,7 +60,7 @@ elif xylo_board_name == 'XyloAudio3':
     import rockpool.devices.xylo.syns65302 as xa3
     from rockpool.devices.xylo.syns65302 import xa3_devkit_utils as xa3utils
 
-# To run the backend, type "uvicorn main:app --reload --port 3000" in the terminal
+# To run the backend, type "uvicorn Xylo:app --reload --port 3000" in the terminal
 # ----------------------------------- API ------------------------------
 app = FastAPI()
 app.add_middleware(
@@ -77,7 +87,7 @@ data_path = os.path.join(current_dir, "DataPreprocessing")
 os.makedirs("plots", exist_ok=True)
 os.makedirs("vmem_calibration", exist_ok=True)
 
-# ----------------------------------- Thresholding and Analysis ------------------------------
+# # ----------------------------------- Thresholding and Analysis ------------------------------
 vmem_net = SynNet(
     neuron_model=LIFTorch,
     output="vmem",
@@ -98,9 +108,9 @@ except FileNotFoundError:
 
 try:
     X_val = torch.from_numpy(
-        np.load(os.path.join(data_path, "X_val.npy"))).float()
+        np.load(os.path.join(data_path, "CustomDataset/X_val.npy"))).float()
     y_val = torch.from_numpy(
-        np.load(os.path.join(data_path, "y_val.npy"))).long()
+        np.load(os.path.join(data_path, "CustomDataset/y_val.npy"))).long()
 except FileNotFoundError:
     print("Validation data not found. Please check the path.")
     exit()
@@ -108,7 +118,7 @@ except FileNotFoundError:
 val_ds = TensorDataset(X_val, y_val)
 val_dl = DataLoader(val_ds, batch_size=n_batches, shuffle=False)
 
-# -------------------- Collect Vmems ------------------------
+# # -------------------- Collect Vmems ------------------------
 vmem_file = os.path.join("vmem_calibration", "all_vmems.npy")
 labels_file = os.path.join("vmem_calibration", "all_labels.npy")
 all_vmems = []
@@ -126,399 +136,382 @@ else:
         for events, labels in val_dl:
             events, labels = events.to(device), labels.to(device)
             out, _, _ = vmem_net(events)
-            output_vmems = out[:, skip_window:, :].mean(dim=1)
-            all_vmems.append(output_vmems.cpu().numpy())
-            all_labels.append(labels.cpu().numpy())
+            all_vmems.append(out[:, skip_window:, :].cpu().numpy())
+            all_labels.append(labels.cpu().numpy().tolist())
 
-    all_vmems = np.concatenate(all_vmems, axis=0)
-    all_labels = np.concatenate(all_labels, axis=0)
-    print("----- Vmem collection complete ------")
-    print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
+all_vmems = np.concatenate(all_vmems, axis=0)
+all_labels = np.concatenate(all_labels, axis=0)
+print("----- Vmem collection complete ------")
+print("vmem shape:", all_vmems.shape, "labels shape:", all_labels.shape)
 
-    np.save(vmem_file, all_vmems)
-    np.save(labels_file, all_labels)
-
-# -------------------- Vmem Range Analysis -------------------
-lowest_vmem = np.min(all_vmems)
-highest_vmem = np.max(all_vmems)
-print(f"Lowest Vmem recorded: {lowest_vmem:.4f}")
-print(f"Highest Vmem recorded: {highest_vmem:.4f}")
-
-# ------------------- Automated Grid-Search Thresholding -------------------
-print("Starting automated grid search for optimal thresholds...")
-
-threshold_ranges = {
-    0: np.arange(-5.0, 10.0, 0.5),   # Car
-    1: np.arange(-5.0, 10.0, 0.5),   # Commercial
-    2: np.arange(-5.0, 10.0, 0.5),   # Background
-}
-
-best_macro_f1 = -1
-grid_search_thresholds = None
-
-all_threshold_combinations = list(itertools.product(
-    threshold_ranges[0],
-    threshold_ranges[1],
-    threshold_ranges[2]
-))
-
-for tset in all_threshold_combinations:
-    spikes = (all_vmems >= tset).astype(int)
-    preds = np.argmax(spikes, axis=1)
-
-    acc = accuracy_score(all_labels, preds)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        all_labels, preds, average=None, zero_division=0
-    )
-    macro_f1 = np.mean(f1)
-
-    if macro_f1 > best_macro_f1:
-        best_macro_f1 = macro_f1
-        grid_search_thresholds = tset
-# ------------------- Iterative Threshold Adjustment -------------------
-print("Starting iterative threshold adjustment...")
-
-thresholds = np.zeros(n_labels)  # [0.0, 0.0, 0.0]
-step_size = 0.1
-max_iterations = 100
-tol = 1e-4
-
-best_macro_f1 = -1
-interative_thresholds = thresholds.copy()
-
-for it in range(max_iterations):
-    improved = False
-    for idx in range(n_labels):
-        for delta in [-step_size, step_size]:
-            temp_thresholds = thresholds.copy()
-            temp_thresholds[idx] += delta
-
-            spikes = (all_vmems >= temp_thresholds).astype(int)
-            preds = np.argmax(spikes, axis=1)
-
-            _, _, f1, _ = precision_recall_fscore_support(
-                all_labels, preds, average=None, zero_division=0
-            )
-            macro_f1 = np.mean(f1)
-
-            if macro_f1 > best_macro_f1 + tol:
-                best_macro_f1 = macro_f1
-                interative_thresholds = temp_thresholds.copy()
-                improved = True
-
-    if not improved:
-        break
-    thresholds = interative_thresholds .copy()
-# ------------------- Manual Threshold Comparison -------------------
-print("Starting manual threshold comparison...")
-
-best_macro_f1_manual = -1
-opt_thresholds = None
-
-# Define the threshold sets you want to test
-manual_thresholds_to_test = [
-    [0.1, 0.2, 0.0],
-    [-1.0, 6.0, 4.0],
-    [1.0, 1.0, 1.0],
-    [3.0, 4.0, 5.0],
-    grid_search_thresholds,
-    interative_thresholds,
-]
-
-for idx, tset in enumerate(manual_thresholds_to_test):
-    print(f"\n----- Evaluating Threshold Set {idx+1}: {tset} -----")
-
-    spikes = (all_vmems >= tset).astype(int)
-    preds = np.argmax(spikes, axis=1)
-
-    acc = accuracy_score(all_labels, preds)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        all_labels, preds, average=None, zero_division=0
-    )
-    macro_f1 = np.mean(f1)
-    conf_matrix = confusion_matrix(all_labels, preds)
-
-    print(f"Macro F1: {macro_f1:.4f}")
-    print(f"Accuracy: {acc:.4f}")
-    for c_idx, cname in enumerate(class_names):
-        print(
-            f"{cname}: Precision={precision[c_idx]:.3f}, Recall={recall[c_idx]:.3f}, F1={f1[c_idx]:.3f}")
-    print("Confusion Matrix:")
-    print(conf_matrix)
-
-    if macro_f1 > best_macro_f1_manual:
-        best_macro_f1_manual = macro_f1
-        opt_thresholds = tset
+opt_thresholds = (np.float64(0.5), np.float64(1.0), np.float64(-5.0))
 
 print(
     f"\nSelected optimal thresholds based on manual comparison: {opt_thresholds}")
-# ----------------------------------------------------------------------
 
-net = SynNet(
-    # neuron_model = LIFExodus,
-    # output="vmem",                         # Use the membrane potential as the output of the network.
-    # probability of dropout (good to prevent overfitting).
-    p_dropout=0.2,
+y_true_bin = label_binarize(all_labels, classes=np.arange(n_labels))
+# ----------------------------------- Thresholding and Analysis ------------------------------
 
-    # time constants and threshold are not trainable by default.
-    # NOTE if not using SynNet then they will be by default.
+def get_optimal_threshold_from_roc(y_true_bin, scores, class_index):
+    """Compute optimal threshold using ROC distance method."""
+    fpr, tpr, thresholds = roc_curve(y_true_bin[:, class_index], scores)
+    distances = (fpr - 0)**2 + (tpr - 1)**2
+    optimal_index = np.argmin(distances)
+    return thresholds[optimal_index]
 
-    # Number of input channels (always 16)
-    n_channels=net_in_channels,
-    # Number of output classes (car, commercial, background noise).
-    n_classes=n_labels,
-    # Number of neurons in each hidden layer (taken from tutorial)
-    size_hidden_layers=[24, 24, 24],
-    # Number of time constants in each hidden layer (taken from tutorial)
-    time_constants_per_layer=[2, 4, 8],
-)
 
-# load the best model
-net.load("Best_Model.json")
-net.seq.out_neurons = LIFTorch([3, 3], threshold=opt_thresholds)
-spec = None
+def plot_roc_vmem_vs_spike(all_vmems, all_labels, class_names, save_path):
+    """Plot ROC curves for Vmem outputs and Spike counts per label."""
+    y_true_bin = label_binarize(all_labels, classes=np.arange(len(class_names)))
+    vmem_scores = all_vmems.mean(axis=1)
+    spike_counts_for_roc = np.sum((all_vmems >= 0).astype(int), axis=1)
 
-print(f"threshold used: {opt_thresholds}")
+    plt.figure(figsize=(12, 5))
 
-# - Call the Xylo mapper on the extracted computational graph
-# - For XyloAudio 2
-if xylo_board_name == 'XyloAudio2':
-    spec = xa2.mapper(net.as_graph(),  weight_dtype='float',
-                      threshold_dtype='float', dash_dtype='float')
-# - For XyloAudio 3
-elif xylo_board_name == 'XyloAudio3':
-    spec = xa3.mapper(net.as_graph(),  weight_dtype='float',
-                      threshold_dtype='float', dash_dtype='float')
+    plt.subplot(1, 2, 1)
+    thresholds_vmem = {}
+    for i, cname in enumerate(class_names):
+        scores = vmem_scores[:, i]
+        fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+        roc_auc = auc(fpr, tpr)
+        thresholds_vmem[cname] = thresholds[np.argmax(tpr - fpr)]
+        plt.plot(fpr, tpr, lw=2, label=f"{cname} (AUC={roc_auc:.2f})")
 
-# - Quantize the specification
-# spec.update(q.global_quantize(**spec))
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", alpha=0.5)
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC per Label (Vmem outputs)")
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
 
-# you can also try channel-wise quantization
-unquantised_spec = spec.copy()
-spec.update(q.channel_quantize(**spec))
-# print(spec)
+    plt.subplot(1, 2, 2)
+    thresholds_spike = {}
+    for i, cname in enumerate(class_names):
+        scores = spike_counts_for_roc[:, i]
+        fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+        roc_auc = auc(fpr, tpr)
+        thresholds_spike[cname] = thresholds[np.argmax(tpr - fpr)]
+        plt.plot(fpr, tpr, lw=2, label=f"{cname} (AUC={roc_auc:.2f})")
 
-# - Use rockpool.devices.xylo.config_from_specification to convert it to a hardware configuration
-# - For XyloAudio 2
-if xylo_board_name == 'XyloAudio2':
-    config, is_valid, msg = xa2.config_from_specification(**spec)
-# - For XyloAudio 3
-elif xylo_board_name == 'XyloAudio3':
-    config, is_valid, msg = xa3.config_from_specification(**spec)
-if not is_valid:
-    # stop execution
-    assert False, msg
+    plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.5)')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC per Label (Spike counts)")
+    plt.legend()
+    plt.grid(alpha=0.3)
 
-# - Use rockpool.devices.xylo.find_xylo_hdks to connect to an HDK
-xylo_hdk_nodes, modules, versions = find_xylo_hdks()
-print(f'HDK versions detected: {versions}')
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
 
-hdk = None
+    return {"vmem": thresholds_vmem, "spike": thresholds_spike}
+
+
+def plot_vehicle_background_roc(all_vmems, all_labels, class_names, save_path):
+    """Plot combined ROC for vehicle detection vs background."""
+    y_true_bin = label_binarize(all_labels, classes=np.arange(len(class_names)))
+    vmem_scores = all_vmems.mean(axis=1)
+    spike_counts_for_roc = np.sum((all_vmems >= 0).astype(int), axis=1)
+
+    y_true_vehicle = np.logical_or(y_true_bin[:, 0], y_true_bin[:, 1]).astype(int)
+    vmem_scores_vehicle = np.maximum(vmem_scores[:, 0], vmem_scores[:, 1])
+    vmem_scores_background = vmem_scores[:, 2]
+    spike_counts_vehicle = np.maximum(spike_counts_for_roc[:, 0], spike_counts_for_roc[:, 1])
+
+    plt.figure(figsize=(8, 6))
+
+    fpr_vmem, tpr_vmem, thresholds_vmem = roc_curve(y_true_vehicle, vmem_scores_vehicle)
+    auc_vmem = auc(fpr_vmem, tpr_vmem)
+    plt.plot(fpr_vmem, tpr_vmem, lw=3, color='darkorange', label=f'Vehicle (Vmem) AUC={auc_vmem:.2f}')
+
+    fpr_bg, tpr_bg, thresholds_bg = roc_curve(y_true_bin[:, 2], vmem_scores_background)
+    auc_bg = auc(fpr_bg, tpr_bg)
+    plt.plot(fpr_bg, tpr_bg, lw=2, color='gray', linestyle=':', label=f'Background (AUC={auc_bg:.2f})')
+
+    fpr_spike, tpr_spike, thresholds_spike = roc_curve(y_true_vehicle, spike_counts_vehicle)
+    auc_spike = auc(fpr_spike, tpr_spike)
+    plt.plot(fpr_spike, tpr_spike, lw=2, color='green', linestyle='--', label=f'Vehicle (Spikes) AUC={auc_spike:.2f}')
+
+    plt.plot([0, 1], [0, 1], 'k--', alpha=0.5)
+    plt.xlabel("False Positive Rate (FPR)")
+    plt.ylabel("True Positive Rate (TPR)")
+    plt.title("Vehicle vs Background ROC")
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
+    optimal_threshold = get_optimal_threshold_from_roc(y_true_bin, spike_counts_for_roc[:, 0], 0)
+    print(f"Optimal spike threshold: {optimal_threshold:.3f}")
+
+    return optimal_threshold
+
+
+# --- Run ROC plots ---
+thresholds_summary = plot_roc_vmem_vs_spike(all_vmems, all_labels, class_names, "plots/ROC_vmem_vs_spikes_fixed.png")
+optimal_threshold = plot_vehicle_background_roc(all_vmems, all_labels, class_names, "plots/ROC_Vehicle_Background_Comparison.png")
+print("Threshold summary:", thresholds_summary)
+
+# --- Hardware and Network Initialization ---
+hdk_initialized = False
 modSamna = None
-
-for version, xylo in zip(versions, xylo_hdk_nodes):
-    if version == "syns61201":
-        hdk = xylo
-    # - For XyloAudio 3
-    elif version == "syns65302":
-        hdk = xylo
-
-# - Use XyloSamna to deploy to the HDK
-if hdk:
-    # - For XyloAudio 2
-    if xylo_board_name == 'XyloAudio2':
-        modSamna = xa2.XyloSamna(hdk, config, dt=dt)
-    # - For XyloAudio 3
-    elif xylo_board_name == 'XyloAudio3':
-        modSamna = xa3.XyloSamna(hdk, config, dt=dt)
-
-# Use Simulation instead.
-if hdk is None:
-    print('HDK not detected, running simulation.')
-    # - For XyloAudio 2
-    if xylo_board_name == 'XyloAudio2':
-        modSim = xa2.XyloSim.from_config(config, dt=dt)
-    # - For XyloAudio 3
-    elif xylo_board_name == 'XyloAudio3':
-        modSim = xa3.XyloSim.from_config(config, dt=dt)
-
-# - Evolve the network on the Xylo HDK
-# - `reset_state` is only needed for XyloAudio 2
-if xylo_board_name == 'XyloAudio2' and modSamna:
-    modSamna.reset_state()
-
-# ---------- Generate some Poisson input (for testing)-------------------#
-T = 100
-f = 0.9
-input_spikes = np.random.rand(T, net_in_channels) < f
-TSEvent.from_raster(input_spikes, dt, name='Poisson input events').plot()
-
-# ----------- Load car, vehicle and bg sound (for testing)--------------#
-dir = os.path.dirname(os.path.abspath('__file__'))
-base_dir = os.path.join(dir, "DataPreprocessing", "small", "samples")
-car_sample = np.load(os.path.join(base_dir, "car.npy"), allow_pickle=True)
-cv_sample = np.load(os.path.join(base_dir, "cv.npy"), allow_pickle=True)
-bg_sample = np.load(os.path.join(base_dir, "bg.npy"), allow_pickle=True)
-
-samples = [car_sample, cv_sample, bg_sample]
-
-# -----------------------RUN--------------------------#
-# need to add microphone stuff here when actually running in free-inference (input from mic)
-freeInferenceMode = False
+modSim = None
 modMonitor = None
+hdk = None
 
-if freeInferenceMode:
-    print('Free Inference Mode enabled.')
-    # - Use XyloMonitor to deploy to the HDK
-    output_mode = "Vmem"
-    amplify_level = "low"
-    hibernation = False
-    DN = True
-    T = 100
+def plot_quantised_ROC():
 
-    # - For XyloAudio 2
-    # - For XyloAudio 2 you need to wait 45s until the AFE auto-calibration is done
+    net_quant = SynNet(
+        p_dropout=0.2,
+        n_channels=net_in_channels,
+        n_classes=n_labels,
+        size_hidden_layers=[24, 24, 24],
+        time_constants_per_layer=[2, 4, 8],
+    ).to("cpu")
+    net_quant.load(model_path)
+    net_quant.seq.out_neurons = LIFTorch([3, 3], threshold=optimal_threshold)
+
+    spec = None
     if xylo_board_name == 'XyloAudio2':
-        modMonitor = xa2.XyloMonitor(hdk, config, dt=dt, output_mode=output_mode,
-                                     amplify_level=amplify_level, hibernation_mode=hibernation, divisive_norm=DN)
-
-    # - For XyloAudio 3
-    # - XyloAudio 3 does not have the amplify_level parameter and does not do AFE auto-calibration
+        import rockpool.devices.xylo.syns61201 as xa2
+        spec = xa2.mapper(net_quant.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
     elif xylo_board_name == 'XyloAudio3':
-        modMonitor = xa3.XyloMonitor(
-            hdk, config, dt=dt, output_mode=output_mode, hibernation_mode=hibernation, dn_active=DN)
+        import rockpool.devices.xylo.syns65302 as xa3
+        spec = xa3.mapper(net_quant.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
 
-list_of_detected_cars = []
+    if spec is not None:
+        unquantised_spec = spec.copy()
+        quantised_spec = spec.copy()
+        quantised_spec.update(q.channel_quantize(**quantised_spec))
 
-if modMonitor:
-    # loop once only
-    samples = []
-
-fignum = 0
-power = -1
-
-for sample in samples:
-    fignum = fignum + 1
-    # dynamically choose whether to sim or run on hdk with or without free-inference mode.
-    if hdk:
-        if modMonitor:
-            # - Perform inference on the Xylo board
-            # - The following line will evolve XyloMonitor for T time steps.
-            # - Keep in mind that this mode is using the microphone as input, hence the output might change according to the ambience noise
-            output, _, r_d = modMonitor(input_data=np.zeros(
-                (T, net_in_channels)), record_power=True)
-        else:
-            output, _, r_d = modSamna(sample, record=True, record_power=True)
-    else:
-        output, _, r_d = modSim(sample, record=True)
-
-    print(output)
-
-    prediction = np.argmax(np.sum(output, axis=0))
-
-    print(prediction)
-    list_of_detected_cars.append(prediction)
-
-    # out_old, _, _ = net(torch.from_numpy(sample))
-
-    # out_old = out_old[:, 30:, :].mean(dim=1)  # using skip and mean value vmem
-
-    # floatingmodel_prediction = torch.argmax(out_old, 1)
-    # print(floatingmodel_prediction)
-
-    if modMonitor or modSamna:
-        # Measure power in Watts
-        if xylo_board_name == 'XyloAudio3':
-            power = np.mean(r_d['analog_power']) + np.mean(r_d['digital_power'])
-            print(f"Total Power Consumption: {power * 1e6:.0f} µW")
         if xylo_board_name == 'XyloAudio2':
-            power = np.mean(r_d['afe_core_power']) + \
-                np.mean(r_d['afe_ldo_power']) + np.mean('snn_core_power')
-            print(f"Total Power Consumption: {power * 1e6:.0f} µW")
+            quant_sim = xa2.XyloSim.from_specification(**quantised_spec)
+        elif xylo_board_name == 'XyloAudio3':
+            quant_sim = xa3.XyloSim.from_specification(**quantised_spec)
+        else:
+            print("Warning: Xylo board name not recognized for simulation. Skipping quantized ROC.")
+            quant_sim = None
 
-    # ----------------SEND DATA TO FRONTEND----------------#
-    # To run the backend, type "uvicorn main:app --reload --port 3000" in the terminal
+        if quant_sim:
+            all_quant_spikes = []
+            quant_sim.reset_state()
 
-    # Set the var that want to pass to targetVar
-    targetVar = {0: "Normal", 1: "Commercial"}.get(prediction, "Invalid")
-    # Create API
+            with torch.no_grad():
+                for events, _ in val_dl:
+                    input_data_np = events.cpu().numpy()
+                    input_spikes_np = np.rint(input_data_np).astype(np.intc)
+                    batch_size, time_steps, channels = input_spikes_np.shape
+                    
+                    reshaped_spikes = input_spikes_np.reshape(batch_size * time_steps, channels)
+                    output_spikes, _, _ = quant_sim(reshaped_spikes)
 
-    @app.get("/api/lastcar")
-    def get_last_car():
-        return {"lastCar": targetVar}
+                    output_spikes_reshaped = output_spikes.reshape(batch_size, time_steps, output_spikes.shape[-1])
+                    
+                    all_quant_spikes.append(output_spikes_reshaped)
 
+            all_quant_spikes = np.concatenate(all_quant_spikes, axis=0)
 
-    @app.get("/api/power")
-    def get_power():
-        return {"power": power}
+            quant_spike_counts_for_roc = np.sum(all_quant_spikes, axis=1)
 
-    #---------------------PLOT OUTPUT-------------------#
-    # - Plot some internal state variables
-    plt.figure()
-    plt.imshow(r_d['Spikes'].T, aspect='auto', origin='lower')
-    plt.title('Hidden spikes')
-    plt.ylabel('Channel')
-    plt.savefig(os.path.join('plots', f'Spikes{fignum}.png'))
+            plt.figure(figsize=(8, 6))
 
-    plt.figure()
-    if hdk:
-        TSContinuous(r_d['times'], r_d['Isyn'],
-                     name='Hidden synaptic currents').plot(stagger=127)
+            for i, cname in enumerate(class_names):
+                scores = quant_spike_counts_for_roc[:, i]
+
+                fpr, tpr, thresholds = roc_curve(y_true_bin[:, i], scores)
+                roc_auc = auc(fpr, tpr)
+
+                plt.plot(fpr, tpr, lw=2, label=f'{cname} (Quantized Spikes AUC={roc_auc:.2f})')
+
+                step = max(1, len(thresholds) // 10)
+                for j in range(0, len(thresholds), step):
+                    plt.text(fpr[j] + 0.01, tpr[j] - 0.01, f'{thresholds[j]:.0f}',
+                            color='blue', fontsize=7, alpha=0.7)
+
+        plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.5)')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curves (Quantized Spike Counts)')
+        plt.legend()
+        plt.grid(alpha=0.3)
+        plt.xlim([-0.05, 1.05])
+        plt.ylim([-0.05, 1.05])
+        plt.tight_layout()
+        plt.savefig(os.path.join("plots", "ROC_Quantized_Spikes.png"))
+        #plt.show()
     else:
-        TSContinuous.from_clocked(
-            r_d['Isyn'], dt, name='Hidden synaptic currents').plot(stagger=127)
-    plt.savefig(os.path.join('plots', f'SynaticCurrents{fignum}.png'))
+        print("Quantized specification could not be created. Skipping quantized ROC.")
 
-    plt.figure()
-    if hdk:
-        TSContinuous(r_d['times'], r_d['Vmem'],
-                     name='Hidden membrane potentials').plot(stagger=127)
-    else:
-        TSContinuous.from_clocked(
-            r_d['Vmem'], dt, name='Hidden membrane potentials').plot(stagger=127)
-    plt.savefig(os.path.join('plots', f'MembranePotential{fignum}.png'))
-    print('Figures Saved')
+def initialize_hardware():
+    global hdk_initialized, modSamna, modSim, modMonitor, hdk
 
-    # ---- PLOT QUANTISATION---------------------------#
-    fig = plt.figure(figsize=(16, 10))
-    ax = fig.add_subplot(321)
-    ax.set_title("w_inp float")
-    ax.hist(np.ravel(unquantised_spec["weights_in"]
-            [unquantised_spec["weights_in"] != 0]), bins=2**8)
+    if hdk_initialized:
+        print("Hardware already initialized.")
+        return
 
-    ax = fig.add_subplot(322)
-    ax.set_title("w_inp quant")
-    ax.hist(np.ravel(spec["weights_in"][spec["weights_in"] != 0]), bins=2**8)
+    print("Initializing hardware and network...")
 
-    ax = fig.add_subplot(323)
-    ax.set_title("w_rec float")
-    ax.hist(np.ravel(unquantised_spec["weights_rec"]
-            [unquantised_spec["weights_rec"] != 0]), bins=2**8)
-
-    ax = fig.add_subplot(324)
-    ax.set_title("w_rec quant")
-    ax.hist(
-        np.ravel(spec["weights_rec"][spec["weights_rec"] != 0]), bins=2**8
+    net = SynNet(
+        p_dropout=0.2,
+        n_channels=net_in_channels,
+        n_classes=n_labels,
+        size_hidden_layers=[24, 24, 24],
+        time_constants_per_layer=[2, 4, 8],
     )
 
-    ax = fig.add_subplot(325)
-    ax.set_title("w_out float")
-    ax.hist(np.ravel(unquantised_spec["weights_out"]
-            [unquantised_spec["weights_out"] != 0]), bins=2**8)
+    net.load(model_path)
+    net.seq.out_neurons = LIFTorch([3, 3], threshold=optimal_threshold)
 
-    ax = fig.add_subplot(326)
-    ax.set_title("w_out quant")
-    ax.hist(
-        np.ravel(spec["weights_out"][spec["weights_out"] != 0]), bins=2**8
-    )
+    spec = None
+    if xylo_board_name == 'XyloAudio2':
+        spec = xa2.mapper(net.as_graph(), weight_dtype='float',
+                          threshold_dtype='float', dash_dtype='float')
+    elif xylo_board_name == 'XyloAudio3':
+        spec = xa3.mapper(net.as_graph(), weight_dtype='float',
+                          threshold_dtype='float', dash_dtype='float')
 
-    plt.savefig(os.path.join('plots', f'QuantisationComparison.png'))
+    unquantised_spec = spec.copy()
+    spec.update(q.channel_quantize(**spec))
 
-# free memory just in case
-if hdk is None:
-    del modSim
-else:
-    if modMonitor:
-        del modMonitor
+    config, is_valid, msg = (xa2.config_from_specification(**spec) if xylo_board_name == 'XyloAudio2'
+                             else xa3.config_from_specification(**spec))
+    assert is_valid, msg
 
-    del modSamna
+    xylo_hdk_nodes, modules, versions = find_xylo_hdks()
+    print(f'HDK versions detected: {versions}')
+
+    for version, xylo in zip(versions, xylo_hdk_nodes):
+        if version == "syns61201" or version == "syns65302":
+            hdk = xylo
+            break
+
+    if hdk:
+        if xylo_board_name == 'XyloAudio2':
+            modSamna = xa2.XyloSamna(hdk, config, dt=dt)
+        elif xylo_board_name == 'XyloAudio3':
+            modSamna = xa3.XyloSamna(hdk, config, dt=dt)
+    else:
+        print('HDK not detected, running simulation.')
+        if xylo_board_name == 'XyloAudio2':
+            modSim = xa2.XyloSim.from_config(config, dt=dt)
+        elif xylo_board_name == 'XyloAudio3':
+            modSim = xa3.XyloSim.from_config(config, dt=dt)
+
+    if hdk and True:
+        output_mode = "Spike"
+        amplify_level = "low"
+        hibernation = False
+        DN = True
+        T = 100
+        if xylo_board_name == 'XyloAudio2':
+            modMonitor = xa2.XyloMonitor(hdk, config, dt=dt, output_mode=output_mode,
+                                         amplify_level=amplify_level, hibernation_mode=hibernation, divisive_norm=DN)
+        elif xylo_board_name == 'XyloAudio3':
+            modMonitor = xa3.XyloMonitor(
+                hdk, config, dt=dt, output_mode=output_mode, hibernation_mode=hibernation, dn_active=DN)
+
+    hdk_initialized = True
+    print("Hardware initialization complete.")
+
+#plot_quantised_ROC()
+initialize_hardware()
+# ----------------------------------- WebSocket Endpoint ------------------------------
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    global modSamna, modSim, modMonitor, hdk
+    await ws.accept()
+    print("WebSocket connected!")
+
+    total_normal = 0
+    total_commercial = 0
+    current_last_car = "None"
+
+    historical_power = []
+    historical_normal = []
+    historical_commercial = []
+
+    class_0_indices = np.where(y_val == 0)[0][:3]
+    class_1_indices = np.where(y_val == 1)[0][:3]
+    class_2_indices = np.where(y_val == 2)[0][:3]
+    test_samples = []
+    test_samples.extend(X_val[class_0_indices])
+    test_samples.extend(X_val[class_1_indices])
+    test_samples.extend(X_val[class_2_indices])
+
+    sample_index = 0
+
+    try:
+        while True:
+
+            input_tensor = test_samples[sample_index % len(test_samples)]
+            input_data = input_tensor.numpy()
+            sample_index += 1
+
+            if modMonitor:
+                modMonitor.reset_state()
+                output, _, r_d = modMonitor(
+                    input_data=input_data, record_power=True)
+            elif modSamna:
+                output, _, r_d = modSamna(
+                    input_data, record=True, record_power=True)
+            elif modSim:
+                print("Running in simulation mode with test data.")
+                output, _, r_d = modSim(input_data, record=True)
+
+            #print(output)
+
+            prediction_threshold = 500
+            prediction_sum = np.sum(output, axis=0)
+            prediction = 2
+
+            if prediction_sum[0] > prediction_threshold:
+                prediction = 0
+            elif prediction_sum[1] > prediction_threshold:
+                prediction = 1
+
+            #print(f"Prediction sum:{prediction_sum}, Prediction:{prediction}")
+
+            power = 0
+            if hdk and 'io_power' in r_d:
+                power = np.mean(r_d['io_power'])
+                if xylo_board_name == 'XyloAudio3':
+                    power += np.mean(r_d['analog_power']) + \
+                        np.mean(r_d['digital_power'])
+                elif xylo_board_name == 'XyloAudio2':
+                    power += np.mean(r_d['afe_core_power']) + np.mean(
+                        r_d['afe_ldo_power']) + np.mean(r_d['snn_core_power'])
+
+            if prediction != 2:
+                current_last_car = {0: "Normal", 1: "Commercial"}.get(
+                    prediction, "Invalid")
+                if prediction == 0:
+                    total_normal += 1
+                elif prediction == 1:
+                    total_commercial += 1
+
+            historical_power.append(int(power*1e6))
+            historical_normal.append(total_normal)
+            historical_commercial.append(total_commercial)
+
+            await ws.send_json({
+                "lastCar": current_last_car,
+                "power": int(power*1e6),
+                "totalNormal": total_normal,
+                "totalCommercial": total_commercial,
+                "totalVehicles": total_normal + total_commercial,
+                "historicalPower": historical_power,
+                "historicalNormal": historical_normal,
+                "historicalCommercial": historical_commercial
+            })
+
+            await asyncio.sleep(1)
+
+    except WebSocketDisconnect:
+        print("WebSocket disconnected.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        print("WebSocket closing.")
