@@ -68,10 +68,18 @@ pip install -r requirements.txt
 
 ### 2. Data Preprocessing
 
-- Download [IDMT-TRAFFIC - Fraunhofer IDMT](https://www.idmt.fraunhofer.de/en/publications/datasets/traffic.html) : This is the basic dataset we use, all data samples have high quality, but this dataset is highly unbalanced, the number of commercial vehicle samples are not enough for our training and testing, so we need another dataset as a supplementary.
-- Download [DCASE2024 Acoustic Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring): This is the supplementary dataset we use for the project. Although the quality of this dataset is not very high, we still find some available commercial vehicle sample to use.
-- The total sample size for training is 30K.
+- Download [IDMT-TRAFFIC - Fraunhofer IDMT](https://www.idmt.fraunhofer.de/en/publications/datasets/traffic.html) : This is the basic dataset we use, all data samples have high quality recorded by high-quality sE8 microphones and meduim-quality MEMS microphones. The dataset includes recordings from 4 different locations, 4 different vehicle types, three different tempo limit areas, as well as dry and wet weather/road conditions. However, this dataset is highly unbalanced, the number of commercial vehicle samples are not enough for our training and testing, so we need another dataset as a supplementary.
+
+
+- Download [DCASE2024 Acoustic Dataset](https://dcase.community/challenge2024/task-acoustic-based-traffic-monitoring): This is the supplementary dataset we use for the project. The audio data were collected using Bosch urban traffic monitoring sensors. A linear microphone array installed on the side of the road parallel to the direction of travel provides audio input to the traffic monitoring system. Real-world data is collected in urban environments with various traffic densities, from country roads with at most 5 vehicles per minute, to intercity roads with as many as 30 vehicles per direction per minute. Although the quality of this dataset is not very high, we still find some available commercial vehicle sample to use.
+
+
+- The total sample size for training is 3000. We used 1000 car samples and 300 CV samples from `DCASE2024 Acoustic Dataset`, and 700 CV samples and 1000 background noise samples from `IDMT-TRAFFIC - Fraunhofer IDMT`.
+
+
 - Place `loc*` directories into `Datapreprocessing/`
+
+
 - Run the following notebooks:
   - `data_preprocessing.ipynb`: to extract segments
   - `spike_test.ipynb`: to convert audio into spike signals
@@ -106,6 +114,7 @@ python3 model.py
 
 Reduce `epochs` to shorten training time (may reduce accuracy).
 
+
 ---
 
 ### 4. Running the Backend (FastAPI)
@@ -115,6 +124,9 @@ Ensure dependencies installed: FastAPI, Rockpool, OS, numpy, matplotlib
 ```bash
 uvicorn main:app --reload --port 3000
 ```
+
+![Model output](assets/images/output.png)  
+Example of the model output. The `[1 0 0]`s are spikes for the final output classification. For example, `[1 0 0]` means the output of this spike is 0, `[0 1 0]` means the output of this spike is 1, and `[0 0 1]` means the output of this spike is 2. The final prediction will be based on the summarization of all the spike outputs. In the example output, there are 100 `0`s, 18 `1`s and 0 `2`s, so the final result would be `0`. We are using 0 for car, 1 for CV and 2 for background noise, so the prediction says it is a car.
 
 ---
 
@@ -156,6 +168,8 @@ print(mod.parameters())
 print(mod.simulation_parameters())
 ```
 
+For more information about Rockpool, please go to [Rockpool](https://rockpool.ai/about.html) 
+
 ---
 
 ### 8. Xylo Audio Hardware
@@ -185,8 +199,20 @@ conda activate rockpool-env
 conda install -c conda-forge rockpool
 ```
 
+### 10. Roadside Demo
+For the project, our ultimate goal is doing a roadside demo to check if all the functions and performance are working as expected. We made it able to classify some cars and commercial vehicles.
+
+However, we also faced issues: 
+- Lacked robustness to wind and talking.
+- Detected same vehicle multiple times.
+- Power occasionally returned NaN.
+- Detected vehicles far away.
+- Speed of vehicle affected classification.
+
+![Roadside Demo](assets/images/Roadside.png)
+
 ## Model architecture
-The implemented model is based on a Spiking Neural Network (SNN) architecture, comprising an input layer, three hidden layers, and an output layer. The input layer consists of 16 neurons, while each of the three hidden layers contains 24 neurons. The output layer includes 3 neurons responsible for the final classification or decision output (one for car, one for commercial vehicle, and one for background noise). All neurons in the network are Leaky Integrate-and-Fire (LIF) neurons, which encode temporal dynamics by accumulating membrane potential (vmem) over time and emitting spikes once the threshold potential is exceeded.
+The implemented model is the [SynNet architecture](https://rockpool.ai/tutorials/synnet/synnet_architecture.html) that based on a Spiking Neural Network (SNN) architecture, comprising an input layer, three hidden layers, and an output layer. The input layer consists of 16 neurons, while each of the three hidden layers contains 24 neurons. The output layer includes 3 neurons responsible for the final classification or decision output (one for car, one for commercial vehicle, and one for background noise). All neurons in the network are Leaky Integrate-and-Fire (LIF) neurons, which encode temporal dynamics by accumulating membrane potential (vmem) over time and emitting spikes once the threshold potential is exceeded.
 
 To enhance computational efficiency, the network employs the LIF Exodus neuron model from Rockpool, which provides optimized support for CUDA acceleration, thereby significantly improving the training performance on compatible GPU hardware.
 
@@ -204,6 +230,20 @@ This decision proved crucial. On the very first training run using the hybrid da
 
 To accelerate training time and improve resource efficiency, we also leveraged CUDA-based GPU acceleration using the Exodus backend in Rockpool. This significantly reduced the training duration and allowed us to experiment more rapidly with hyperparameters.
 
-![ROC](/assets/images/ROC.png)
-![accuracy](/assets/images/Accuracy.png)
-![metrics](/assets/images/metrics.png)
+![ROC0](/assets/images/ROC0.png)  
+ROC curve before quantisation
+
+![ROC](/assets/images/ROC.png)  
+ROC curve after quantisation
+
+The first two images show the ROC curves before quantisation, based on both membrane potential outputs and spike counts. The third plot illustrates ROC curves after quantisation, with AUC values still exceeding 0.90 for all three classes (Car, Commercial, Background), indicating that quantisation preserved most of the model's discriminative power.
+
+![accuracy](/assets/images/Accuracy.png)  
+Accuracy Curve and Training Loss Curve
+
+The accuracy curve shows rapid early improvement and eventual convergence at around 90%, while the training loss curve decreases steadily, confirming effective learning and stable training.
+
+![metrics](/assets/images/metrics.png)  
+Confusion matrix for testing
+
+This plot presents a confusion matrix on the test set. The model achieved an overall test accuracy of 90.62%, correctly identifying most samples across all classes, with especially strong performance on cars and background noise. Some misclassifications occurred between trucks and other classes, consistent with class imbalance during training.
