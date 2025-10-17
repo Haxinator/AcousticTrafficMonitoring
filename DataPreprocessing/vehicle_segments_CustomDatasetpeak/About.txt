@@ -1,4 +1,4 @@
-Combines old and new dataset.
+Combines DCASE2024 Acoustic Dataset​ and IDMT-TRAFFIC Dataset.
 takes car samples from first dataset and the usable cv samples.
-only 300 usable cv samples, so other cv samples taken from new dataset.
-background sounds also taken from new dataset.
+only 300 usable cv samples, so other cv samples taken from second dataset.
+background sounds also taken from second dataset.
