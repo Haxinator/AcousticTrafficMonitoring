@@ -72,7 +72,7 @@ Download and follow the instructions for extracting the [Acoustic Based Traffic 
 
 Place the `loc` directories into the Datapreprocessing folder. Run the `data_preprocessing.ipynb` notebook to start extracting audio segments of cars, commerical vehicles and background noise.
 
-Once complete run the `spike_test.ipynb` file to convert the segements into spikes which the SNN model can use.
+Once complete run the `Audio2Spike.ipynb` file to convert the segements into spikes which the SNN model can use.
 
 This process can take may take a day or two to complete.
 
