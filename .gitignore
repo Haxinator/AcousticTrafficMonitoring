@@ -25,3 +25,14 @@ node_modules/
 build/
 dist/
 .env
+DataPreprocessing/CustomDataset.zip
+DataPreprocessing/CustomDatasetRaw.zip
+DataPreprocessing/CustomRawDataset/cv/2019-11-19-16-30_Langewiesener-Strasse_50Kmh_1785464_A_D_TL.zip
+DataPreprocessing/NEWCustomRawDataset.zip
+DataPreprocessing/noisyData.zip
+DataPreprocessing/vehicle_segments_CustomDatasetpeak/CustomDatasetRaw.zip
+DataPreprocessing/vehicle_segments_CustomDatasetpeak/cv.zip
+moreNoise_Model.json
+moreNoise_Stats.json
+talking_Model.json
+talking_Stats.json

@@ -121,7 +121,7 @@ def process_clip(args):
     out_path = None
     try:
         cls = Path(input_path).parent.name.lower()
-        label_map = {'car': 0, 'cv': 1, 'background': 2, 'cv_aug': 1}
+        label_map = {'car': 0, 'cv': 1, 'background': 2, 'bg': 2, 'cv_aug': 1}
         class_map = {0: 'Car', 1: 'CommercialVehicle', 2: 'Background'}
 
         if cls not in label_map:
@@ -169,8 +169,8 @@ if __name__ == '__main__':
     )
     
     base_dir = os.path.dirname(os.path.abspath('__file__'))
-    seg_dir = os.path.join(base_dir, 'vehicle_segments_CustomDatasetpeak')
-    input_csv = os.path.join(seg_dir, 'vehicle_clips.csv')
+    seg_dir = os.path.join(base_dir, 'processed_segments')
+    input_csv = os.path.join(seg_dir, 'processed_segments_labels.csv')
     data_dir = os.path.join(base_dir, 'newdataspikes')
     os.makedirs(data_dir, exist_ok=True)
 
@@ -180,7 +180,7 @@ if __name__ == '__main__':
 
     df = pd.read_csv(input_csv)
     df['filepath'] = df['filepath'].apply(
-        lambda x: os.path.join('vehicle_segments_CustomDatasetpeak', x.replace("\\", "/")))
+        lambda x: os.path.join('processed_segments', x.replace("\\", "/")))
     
     df_car = df[df['label'] == 0]
     df_cv = df[df['label'] == 1]
@@ -223,7 +223,7 @@ base_dir = r'newdataspikes/npy'  # ← Replace it with the path where your three
 label_map = {
     'Car': 0,
     'CommercialVehicle': 1,
-    'Background': 2
+    'Background': 2,
 }
 
 target_shape = (100, 16)  # ← Set the shape of the data you wish to harmonize (e.g. from the most common samples)
